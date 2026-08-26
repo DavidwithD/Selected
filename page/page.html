@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Selected</title>
+    <link rel="stylesheet" href="page.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <h1>Selected</h1>
+        <span id="count" class="count">0 saved</span>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="recording" />
+        <span>Recording</span>
+      </label>
+    </header>
+
+    <section class="filters">
+      <input
+        type="search"
+        id="q"
+        placeholder="Search text  ( / )"
+        autocomplete="off"
+      />
+      <select id="host">
+        <option value="">All sites</option>
+      </select>
+      <label class="date">From <input type="date" id="from" /></label>
+      <label class="date">To <input type="date" id="to" /></label>
+      <select id="order">
+        <option value="desc">Newest first</option>
+        <option value="asc">Oldest first</option>
+      </select>
+      <button id="reset" class="ghost">Reset</button>
+    </section>
+
+    <section class="bar">
+      <label class="check">
+        <input type="checkbox" id="selectPage" />
+        <span id="selectedCount">Select page</span>
+      </label>
+      <div class="spacer"></div>
+      <button id="copySel" disabled>Copy</button>
+      <button id="delSel" class="danger" disabled>Delete</button>
+      <span class="divider"></span>
+      <span class="label">Download matches</span>
+      <button data-download="json">JSON</button>
+      <button data-download="csv">CSV</button>
+      <button data-download="txt">TXT</button>
+      <span class="divider"></span>
+      <button id="clearAll" class="danger ghost">Clear all</button>
+    </section>
+
+    <details id="settings" class="settings">
+      <summary>Settings</summary>
+      <div class="settings-grid">
+        <label>
+          Keep selections for
+          <input type="number" id="retention" min="0" max="3650" step="1" />
+          days
+          <span class="hint">0 keeps everything.</span>
+        </label>
+        <label>
+          Never record on these sites
+          <textarea
+            id="blocked"
+            rows="4"
+            placeholder="mail.google.com&#10;my-bank.example"
+          ></textarea>
+          <span class="hint"
+            >One host per line. A host also covers its subdomains. Form fields
+            and incognito windows are never recorded.</span
+          >
+        </label>
+        <div>
+          <button id="saveSettings">Save settings</button>
+        </div>
+      </div>
+    </details>
+
+    <main>
+      <ul id="list" class="list"></ul>
+      <p id="empty" class="empty" hidden>Nothing here yet.</p>
+    </main>
+
+    <footer class="pager">
+      <button id="prev">Previous</button>
+      <span id="pageInfo">—</span>
+      <button id="next">Next</button>
+      <select id="pageSize">
+        <option value="25">25 per page</option>
+        <option value="50" selected>50 per page</option>
+        <option value="100">100 per page</option>
+      </select>
+    </footer>
+
+    <div id="toast" class="toast" hidden></div>
+    <script type="module" src="page.js"></script>
+  </body>
+</html>

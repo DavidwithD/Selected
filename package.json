@@ -1,0 +1,17 @@
+{
+  "name": "selected",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension that saves every text you select.",
+  "scripts": {
+    "icons": "node scripts/make-icons.cjs",
+    "format": "prettier --write \"**/*.{js,json,html,css,md}\"",
+    "check": "node --check content.js",
+    "test": "node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.5",
+    "prettier": "^3.9.6"
+  },
+  "type": "module"
+}
