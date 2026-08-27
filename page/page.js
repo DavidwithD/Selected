@@ -35,6 +35,7 @@ const ui = {
   pageSize: el('pageSize'),
   retention: el('retention'),
   blocked: el('blocked'),
+  captureSelection: el('captureSelection'),
   captureClipboard: el('captureClipboard'),
   saveSettings: el('saveSettings'),
   toast: el('toast'),
@@ -353,7 +354,16 @@ ui.recording.addEventListener('change', () => {
   toast(ui.recording.checked ? 'Recording' : 'Paused');
 });
 
-// A privacy switch takes effect when it is clicked, not on Save.
+// A capture switch takes effect when it is clicked, not on Save.
+ui.captureSelection.addEventListener('change', () => {
+  setSettings({ captureSelection: ui.captureSelection.checked });
+  toast(
+    ui.captureSelection.checked
+      ? 'Saving what you select'
+      : 'Selection capture off',
+  );
+});
+
 ui.captureClipboard.addEventListener('change', () => {
   setSettings({ captureClipboard: ui.captureClipboard.checked });
   toast(
@@ -390,6 +400,7 @@ async function start() {
   ui.recording.checked = settings.recording;
   ui.retention.value = String(settings.retentionDays);
   ui.blocked.value = settings.blockedHosts.join('\n');
+  ui.captureSelection.checked = settings.captureSelection;
   ui.captureClipboard.checked = settings.captureClipboard;
   state.pageSize = Number(ui.pageSize.value);
   await refreshHosts();

@@ -18,12 +18,14 @@ const CLEANUP_ALARM = 'selected:cleanup';
 const CLEANUP_EVERY_MINUTES = 6 * 60;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// The badge reads 'off' when nothing can be saved: paused, or both sources off.
 async function paintBadge() {
-  const { recording } = await getSettings();
-  await chrome.action.setBadgeText({ text: recording ? '' : 'off' });
+  const { recording, captureSelection, captureClipboard } = await getSettings();
+  const live = recording && (captureSelection || captureClipboard);
+  await chrome.action.setBadgeText({ text: live ? '' : 'off' });
   await chrome.action.setBadgeBackgroundColor({ color: '#8a8a8a' });
   await chrome.action.setTitle({
-    title: recording ? 'Selected: open saved text' : 'Selected: paused',
+    title: live ? 'Selected: open saved text' : 'Selected: paused',
   });
 }
 
@@ -67,7 +69,13 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  if (changes.recording) paintBadge();
+  if (
+    changes.recording ||
+    changes.captureSelection ||
+    changes.captureClipboard
+  ) {
+    paintBadge();
+  }
   if (changes.retentionDays) runCleanup();
 });
 
@@ -92,8 +100,9 @@ async function handleSave(message, sender) {
   // The extension is not enabled in incognito, but check anyway.
   if (sender.tab?.incognito) return { saved: false, reason: 'incognito' };
 
-  const { recording, blockedHosts } = await getSettings();
+  const { recording, blockedHosts, captureSelection } = await getSettings();
   if (!recording) return { saved: false, reason: 'paused' };
+  if (!captureSelection) return { saved: false, reason: 'off' };
 
   const url = message.url || sender.tab?.url || '';
   if (isBlocked(hostOfUrl(url), blockedHosts)) {

@@ -11,6 +11,7 @@ const POPUP_GAP_MS = 60000;
 
 let recording = true;
 let blocked = false;
+let captureSelection = true;
 let captureClipboard = false;
 let timer = null;
 let last = { text: '', at: 0 };
@@ -28,10 +29,16 @@ function hostIsBlocked(hosts) {
 }
 
 chrome.storage.local.get(
-  { recording: true, blockedHosts: [], captureClipboard: false },
+  {
+    recording: true,
+    blockedHosts: [],
+    captureSelection: true,
+    captureClipboard: false,
+  },
   (state) => {
     recording = state.recording !== false;
     blocked = hostIsBlocked(state.blockedHosts);
+    captureSelection = state.captureSelection !== false;
     captureClipboard = state.captureClipboard === true;
   },
 );
@@ -41,6 +48,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (changes.recording) recording = changes.recording.newValue !== false;
   if (changes.blockedHosts) {
     blocked = hostIsBlocked(changes.blockedHosts.newValue);
+  }
+  if (changes.captureSelection) {
+    captureSelection = changes.captureSelection.newValue !== false;
   }
   if (changes.captureClipboard) {
     captureClipboard = changes.captureClipboard.newValue === true;
@@ -62,7 +72,7 @@ function currentSelection() {
 }
 
 function capture() {
-  if (!recording || blocked) return;
+  if (!recording || blocked || !captureSelection) return;
   const text = currentSelection().trim();
   if (text.length < MIN_LENGTH) return;
   if (text.length > MAX_LENGTH) return;

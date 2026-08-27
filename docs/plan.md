@@ -87,6 +87,9 @@ Added on 2026-08-27. Off by default, one checkbox on the manager page.
 - The service worker drops the text when it matches the previous read, held in
   `chrome.storage.session`, or the newest record.
 - The record is stored with `source: 'clipboard'`, host `clipboard`, no url.
+- Each source has its own switch: `captureSelection` on, `captureClipboard`
+  off. The header `recording` switch pauses both. The badge reads `off` when
+  nothing can be saved.
 
 Not solved: an alt-tab to another application draws the same shape as a popup.
 `chrome.windows.onFocusChanged` may separate them. It is untested. If it stays

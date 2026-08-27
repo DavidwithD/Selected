@@ -27,7 +27,7 @@ content script only runs on pages loaded after the reload.
   blocklist rules. `lib/format.js` builds the export files.
 
 A record is `{ id, text, ts, url, title, host, source }`. `source` is
-`selection` or `clipboard`.
+`selection` or `clipboard`. Each source has its own switch.
 
 ## What it never saves
 
@@ -41,7 +41,7 @@ A selection you widen within 4 seconds replaces the narrower one.
 
 ## Clipboard capture
 
-Off by default. Turn it on under Settings, "Also save what I copy".
+Off by default. Turn it on under Settings, "Save what I copy".
 
 A content script cannot run inside an extension popup. Chrome forbids one
 extension from injecting into another extension's pages. Text you select there
@@ -70,12 +70,18 @@ then is saved once.
 
 Open the page and expand "Settings".
 
-- **Recording** — the switch in the header. The badge shows `off` when paused.
+- **Recording** — the switch in the header. It pauses both sources at once. The
+  badge shows `off` when paused.
+- **Save what I select** — on by default. Text you select on a page.
+- **Save what I copy** — off by default. See "Clipboard capture" above.
 - **Keep selections for N days** — default 90. A cleanup runs every 6 hours and
   on browser start. 0 keeps everything.
 - **Never record on these sites** — one host per line. A host also covers its
   subdomains. The blocklist stops clipboard capture on those sites too.
-- **Also save what I copy** — off by default. See "Clipboard capture" above.
+
+The two source switches are independent. Turn selection off and clipboard on to
+save only what you copy. The badge shows `off` when both are off, the same as a
+pause.
 
 ## Scripts
 
