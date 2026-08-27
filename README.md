@@ -26,7 +26,8 @@ content script only runs on pages loaded after the reload.
 - `lib/db.js` holds the queries. `lib/settings.js` holds the settings and the
   blocklist rules. `lib/format.js` builds the export files.
 
-A record is `{ id, text, ts, url, title, host }`.
+A record is `{ id, text, ts, url, title, host, source }`. `source` is
+`selection` or `clipboard`.
 
 ## What it never saves
 
@@ -38,6 +39,33 @@ A record is `{ id, text, ts, url, title, host }`.
 
 A selection you widen within 4 seconds replaces the narrower one.
 
+## Clipboard capture
+
+Off by default. Turn it on under Settings, "Also save what I copy".
+
+A content script cannot run inside an extension popup. Chrome forbids one
+extension from injecting into another extension's pages. Text you select there
+is out of reach.
+
+The clipboard is the way in. Select the text in the popup and press Ctrl+C. The
+popup closes when you click back on the page. The extension reads the clipboard
+at that moment and saves what it finds.
+
+The trigger is a shape, not the popup itself: the window loses focus, the tab
+stays visible, focus comes back within a minute. Tab switches and minimised
+windows are skipped. Switching to another application draws the same shape, so
+text you copy in another application is saved too. The page cannot tell the two
+apart.
+
+A clipboard record has no source page. It is stored under the host `clipboard`,
+so the site filter can pick it out, and the list shows a `Clipboard` label in
+place of a link.
+
+The same text is not saved twice. It is skipped when it is still in the
+clipboard on the next focus, and when it is already the newest record. The first
+focus after a browser restart is the exception. Whatever sits in the clipboard
+then is saved once.
+
 ## Settings
 
 Open the page and expand "Settings".
@@ -46,7 +74,8 @@ Open the page and expand "Settings".
 - **Keep selections for N days** — default 90. A cleanup runs every 6 hours and
   on browser start. 0 keeps everything.
 - **Never record on these sites** — one host per line. A host also covers its
-  subdomains.
+  subdomains. The blocklist stops clipboard capture on those sites too.
+- **Also save what I copy** — off by default. See "Clipboard capture" above.
 
 ## Scripts
 

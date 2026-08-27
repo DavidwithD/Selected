@@ -6,11 +6,16 @@ const MAX_LENGTH = 20000;
 const DEBOUNCE_MS = 250;
 // Same text selected again inside this window is ignored.
 const REPEAT_WINDOW_MS = 4000;
+// A blur longer than this is not a popup.
+const POPUP_GAP_MS = 60000;
 
 let recording = true;
 let blocked = false;
+let captureClipboard = false;
 let timer = null;
 let last = { text: '', at: 0 };
+let blurAt = 0;
+let wentHidden = false;
 
 // Same rule as isBlocked() in lib/settings.js. Repeated here because a content
 // script cannot import a module.
@@ -22,16 +27,23 @@ function hostIsBlocked(hosts) {
   });
 }
 
-chrome.storage.local.get({ recording: true, blockedHosts: [] }, (state) => {
-  recording = state.recording !== false;
-  blocked = hostIsBlocked(state.blockedHosts);
-});
+chrome.storage.local.get(
+  { recording: true, blockedHosts: [], captureClipboard: false },
+  (state) => {
+    recording = state.recording !== false;
+    blocked = hostIsBlocked(state.blockedHosts);
+    captureClipboard = state.captureClipboard === true;
+  },
+);
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if (changes.recording) recording = changes.recording.newValue !== false;
   if (changes.blockedHosts) {
     blocked = hostIsBlocked(changes.blockedHosts.newValue);
+  }
+  if (changes.captureClipboard) {
+    captureClipboard = changes.captureClipboard.newValue === true;
   }
 });
 
@@ -90,3 +102,63 @@ document.addEventListener(
   },
   true,
 );
+
+// Clipboard capture, off by default.
+//
+// A content script cannot run inside an extension popup. Chrome forbids one
+// extension from injecting into another extension's pages. The clipboard is the
+// only way to reach text selected there.
+//
+// A popup leaves a shape on the page below it: the window loses focus, the tab
+// stays visible, and focus comes back. Reading the clipboard on that shape skips
+// tab switches and minimised windows.
+//
+// Switching to another application draws the same shape. Text copied there is
+// captured too. The setting on the manager page says so.
+
+async function readClipboard() {
+  if (!captureClipboard || !recording || blocked) return;
+  if (!document.hasFocus()) return;
+
+  let text = '';
+  try {
+    text = await navigator.clipboard.readText();
+  } catch {
+    // Focus was lost again, or the page forbids the read. Nothing to do.
+    return;
+  }
+
+  text = text.trim();
+  if (text.length < MIN_LENGTH || text.length > MAX_LENGTH) return;
+
+  chrome.runtime.sendMessage(
+    {
+      type: 'selected:clipboard',
+      text,
+      // For the blocklist check. It is not stored on the record.
+      pageUrl: location.href,
+    },
+    () => {
+      void chrome.runtime.lastError;
+    },
+  );
+}
+
+// One reader per tab. A frame does not need its own.
+if (window.top === window) {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) wentHidden = true;
+  });
+
+  window.addEventListener('blur', () => {
+    blurAt = Date.now();
+  });
+
+  window.addEventListener('focus', () => {
+    const looksLikePopup =
+      blurAt > 0 && !wentHidden && Date.now() - blurAt < POPUP_GAP_MS;
+    blurAt = 0;
+    wentHidden = false;
+    if (looksLikePopup) readClipboard();
+  });
+}

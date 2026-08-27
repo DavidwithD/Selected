@@ -1,15 +1,19 @@
 // Service worker. Single writer to the database.
 // Owns the toolbar icon, the badge and the retention cleanup.
 
-import { addSelection, countAll, deleteOlderThan } from './lib/db.js';
 import {
-  DEFAULTS,
-  getSettings,
-  isBlocked,
-  hostOfUrl,
-} from './lib/settings.js';
+  addSelection,
+  countAll,
+  deleteOlderThan,
+  newestText,
+} from './lib/db.js';
+import { DEFAULTS, getSettings, isBlocked, hostOfUrl } from './lib/settings.js';
+import { shouldSaveClipboard } from './lib/clipboard.js';
 
 const PAGE_URL = 'page/page.html';
+// The last clipboard text, in session storage. That storage is memory only and
+// is cleared when the browser closes.
+const LAST_CLIPBOARD = 'lastClipboard';
 const CLEANUP_ALARM = 'selected:cleanup';
 const CLEANUP_EVERY_MINUTES = 6 * 60;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -104,6 +108,39 @@ async function handleSave(message, sender) {
   return { saved: true, ...result };
 }
 
+/**
+ * Save text the user copied while a popup was open.
+ * The record has no source page, so it carries no url and no title.
+ */
+async function handleClipboard(message) {
+  const { recording, blockedHosts, captureClipboard } = await getSettings();
+  if (!recording) return { saved: false, reason: 'paused' };
+  if (!captureClipboard) return { saved: false, reason: 'off' };
+  if (isBlocked(hostOfUrl(message.pageUrl), blockedHosts)) {
+    return { saved: false, reason: 'blocked' };
+  }
+
+  const text = String(message.text || '').trim();
+  const stored = await chrome.storage.session.get({ [LAST_CLIPBOARD]: '' });
+  const keep = shouldSaveClipboard(text, {
+    lastClipboard: stored[LAST_CLIPBOARD],
+    newestText: await newestText(),
+  });
+
+  // Remember the text either way. A text skipped here must not come back on the
+  // next focus.
+  await chrome.storage.session.set({ [LAST_CLIPBOARD]: text });
+  if (!keep) return { saved: false, reason: 'duplicate' };
+
+  const result = await addSelection({
+    text,
+    url: '',
+    title: '',
+    source: 'clipboard',
+  });
+  return { saved: true, ...result };
+}
+
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (message?.type === 'selected:save') {
     handleSave(message, sender)
@@ -113,6 +150,16 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         respond({ saved: false, error: String(error) });
       });
     return true; // respond() is called later
+  }
+
+  if (message?.type === 'selected:clipboard') {
+    handleClipboard(message)
+      .then(respond)
+      .catch((error) => {
+        console.error('Selected: could not save the clipboard', error);
+        respond({ saved: false, error: String(error) });
+      });
+    return true;
   }
 
   if (message?.type === 'selected:count') {

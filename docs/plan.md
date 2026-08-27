@@ -1,6 +1,7 @@
 # Selected — plan
 
-Status: phase 1 is built and loadable. `npm test` passes, 18 tests.
+Status: phase 1 and clipboard capture are built and loadable. `npm test`
+passes, 27 tests.
 
 ## Premises
 
@@ -19,6 +20,9 @@ These are the assumptions behind the code. Correct any that are wrong.
 6. The manager page is a full tab, opened by the toolbar icon. There is no
    popup. The switches live on that page.
 7. Data stays on this machine. Nothing is sent anywhere. There is no sync.
+8. A content script cannot reach an extension popup. Chrome forbids injection
+   into another extension's pages. The clipboard is the only channel to that
+   text, and it is off by default.
 
 ## Decisions
 
@@ -40,6 +44,7 @@ Answered on 2026-08-21.
 | `background.js`          | Writes records. Badge, icon click, cleanup.    |
 | `lib/db.js`              | IndexedDB open, add, query, delete, retention. |
 | `lib/settings.js`        | Defaults, blocklist rules, host parsing.       |
+| `lib/clipboard.js`       | The clipboard dedupe rule.                     |
 | `lib/format.js`          | JSON, CSV and TXT builders. Time formatting.   |
 | `page/page.html/css/js`  | Manager page.                                  |
 | `scripts/make-icons.cjs` | Draws the three PNG icons.                     |
@@ -71,6 +76,22 @@ Manager page:
 - Clear all.
 - Settings: recording switch, retention days, blocked hosts.
 - Dark mode. `/` focuses the search box.
+
+## Clipboard capture (done)
+
+Added on 2026-08-27. Off by default, one checkbox on the manager page.
+
+- The content script watches the top frame for a blur/focus pair while the tab
+  stays visible. That is the shape a popup leaves behind.
+- On that shape it reads the clipboard and sends the text to the service worker.
+- The service worker drops the text when it matches the previous read, held in
+  `chrome.storage.session`, or the newest record.
+- The record is stored with `source: 'clipboard'`, host `clipboard`, no url.
+
+Not solved: an alt-tab to another application draws the same shape as a popup.
+`chrome.windows.onFocusChanged` may separate them. It is untested. If it stays
+quiet while a popup opens, the service worker can refuse a capture taken across
+a gap where the browser itself lost focus.
 
 ## Phase 2 — next
 

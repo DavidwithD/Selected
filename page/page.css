@@ -210,6 +210,15 @@ main {
   color: var(--muted);
 }
 
+/* A clipboard record has no source page, so it gets a label, not a link. */
+.chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
 .actions {
   display: flex;
   gap: 6px;
@@ -292,6 +301,12 @@ main {
   border-radius: 6px;
   padding: 6px 8px;
   resize: vertical;
+}
+
+.row-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .hint {
