@@ -210,6 +210,15 @@ main {
   color: var(--muted);
 }
 
+/* A clipboard record has no source page, so it gets a label, not a link. */
+.chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 11px;
+  line-height: 16px;
+}
+
 .actions {
   display: flex;
   gap: 6px;
@@ -294,8 +303,22 @@ main {
   resize: vertical;
 }
 
+.row-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .hint {
   color: var(--muted);
   font-size: 12px;
   max-width: 320px;
+}
+
+.settings-grid kbd {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  font: inherit;
+  font-family: ui-monospace, monospace;
 }

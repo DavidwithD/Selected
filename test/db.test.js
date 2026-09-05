@@ -14,6 +14,7 @@ const {
   clearAll,
   countAll,
   listHosts,
+  newestText,
 } = await import('../lib/db.js');
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -136,6 +137,48 @@ test('a wider selection later, or on another page, is a new record', async () =>
   });
   assert.equal(other.superseded, false);
   assert.equal(await countAll(), 3);
+});
+
+test('a clipboard record has no page and lands under the clipboard host', async () => {
+  await clearAll();
+  await addSelection({
+    text: 'copied from a popup',
+    url: '',
+    title: '',
+    ts: T0,
+    source: 'clipboard',
+  });
+  const { rows, total } = await query({ host: 'clipboard' });
+  assert.equal(total, 1);
+  assert.equal(rows[0].url, '');
+  assert.equal(rows[0].source, 'clipboard');
+});
+
+test('one clipboard record never replaces another', async () => {
+  await clearAll();
+  await addSelection({
+    text: 'brown fox',
+    url: '',
+    title: '',
+    ts: T0,
+    source: 'clipboard',
+  });
+  const second = await addSelection({
+    text: 'the quick brown fox',
+    url: '',
+    title: '',
+    ts: T0 + 1000,
+    source: 'clipboard',
+  });
+  assert.equal(second.superseded, false);
+  assert.equal(await countAll(), 2);
+});
+
+test('newestText reads the newest record, or nothing', async () => {
+  await clearAll();
+  assert.equal(await newestText(), '');
+  await seed();
+  assert.equal(await newestText(), 'Quick note');
 });
 
 test('lists distinct hosts', async () => {

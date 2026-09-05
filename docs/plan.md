@@ -1,6 +1,7 @@
 # Selected — plan
 
-Status: phase 1 is built and loadable. `npm test` passes, 18 tests.
+Status: phase 1 and clipboard capture are built and loadable. `npm test`
+passes, 27 tests.
 
 ## Premises
 
@@ -19,6 +20,9 @@ These are the assumptions behind the code. Correct any that are wrong.
 6. The manager page is a full tab, opened by the toolbar icon. There is no
    popup. The switches live on that page.
 7. Data stays on this machine. Nothing is sent anywhere. There is no sync.
+8. A content script cannot reach an extension popup. Chrome forbids injection
+   into another extension's pages. The clipboard is the only channel to that
+   text, and it is off by default.
 
 ## Decisions
 
@@ -40,6 +44,7 @@ Answered on 2026-08-21.
 | `background.js`          | Writes records. Badge, icon click, cleanup.    |
 | `lib/db.js`              | IndexedDB open, add, query, delete, retention. |
 | `lib/settings.js`        | Defaults, blocklist rules, host parsing.       |
+| `lib/clipboard.js`       | The clipboard dedupe rule.                     |
 | `lib/format.js`          | JSON, CSV and TXT builders. Time formatting.   |
 | `page/page.html/css/js`  | Manager page.                                  |
 | `scripts/make-icons.cjs` | Draws the three PNG icons.                     |
@@ -71,6 +76,44 @@ Manager page:
 - Clear all.
 - Settings: recording switch, retention days, blocked hosts.
 - Dark mode. `/` focuses the search box.
+
+## Clipboard capture (done)
+
+Added on 2026-08-27. Off by default, one checkbox on the manager page.
+
+- The content script reads the clipboard on Ctrl+Shift+S, Command+Shift+S on
+  macOS. The listener runs in every frame. A key event reaches only the focused
+  frame, so one press sends one message.
+- It sends the text to the service worker, which drops it when it matches the
+  newest record.
+- The record is stored with `source: 'clipboard'`, host `clipboard`, no url.
+- The content script shows the result in a toast. The toast sits in a closed
+  shadow root, out of reach of page styles and page scripts.
+- Each source has its own switch: `captureSelection` on, `captureClipboard`
+  off. The header `recording` switch pauses both. The badge reads `off` when
+  nothing can be saved.
+
+## Why the shortcut replaced blur/focus (2026-09-05)
+
+The first version read the clipboard when the top window fired blur and then
+focus, with the tab still visible. That guessed at a popup. It failed twice.
+
+A popup drawn as a `chrome-extension://` iframe inside the page removes itself
+when you click back. The window fires blur when focus enters the iframe. It
+never fires focus, because the browser window never lost focus at the OS level.
+The read never ran.
+
+The same shape also appeared on every switch back from another application. The
+extension read whatever you had copied there.
+
+A keypress fixes both cases. The read happens only when the user presses the
+key. The `lastClipboard` record in `chrome.storage.session` went with the
+heuristic. It existed because the ambient read fired on every focus.
+
+Open: the key is fixed in `content.js`. `chrome.commands` would let the user
+remap it, but it needs `host_permissions` for `tabs.sendMessage`, because the
+service worker has no clipboard of its own. That is a wider install prompt for a
+remappable key.
 
 ## Phase 2 — next
 

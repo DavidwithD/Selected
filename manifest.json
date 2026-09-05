@@ -3,7 +3,7 @@
   "name": "Selected",
   "version": "0.1.0",
   "description": "Saves every text you select, automatically. Browse, filter, copy and export it from one page.",
-  "permissions": ["storage", "unlimitedStorage", "alarms"],
+  "permissions": ["storage", "unlimitedStorage", "alarms", "clipboardRead"],
   "incognito": "not_allowed",
   "action": {
     "default_title": "Selected: open saved text"

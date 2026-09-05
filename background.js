@@ -1,25 +1,28 @@
 // Service worker. Single writer to the database.
 // Owns the toolbar icon, the badge and the retention cleanup.
 
-import { addSelection, countAll, deleteOlderThan } from './lib/db.js';
 import {
-  DEFAULTS,
-  getSettings,
-  isBlocked,
-  hostOfUrl,
-} from './lib/settings.js';
+  addSelection,
+  countAll,
+  deleteOlderThan,
+  newestText,
+} from './lib/db.js';
+import { DEFAULTS, getSettings, isBlocked, hostOfUrl } from './lib/settings.js';
+import { shouldSaveClipboard } from './lib/clipboard.js';
 
 const PAGE_URL = 'page/page.html';
 const CLEANUP_ALARM = 'selected:cleanup';
 const CLEANUP_EVERY_MINUTES = 6 * 60;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// The badge reads 'off' when nothing can be saved: paused, or both sources off.
 async function paintBadge() {
-  const { recording } = await getSettings();
-  await chrome.action.setBadgeText({ text: recording ? '' : 'off' });
+  const { recording, captureSelection, captureClipboard } = await getSettings();
+  const live = recording && (captureSelection || captureClipboard);
+  await chrome.action.setBadgeText({ text: live ? '' : 'off' });
   await chrome.action.setBadgeBackgroundColor({ color: '#8a8a8a' });
   await chrome.action.setTitle({
-    title: recording ? 'Selected: open saved text' : 'Selected: paused',
+    title: live ? 'Selected: open saved text' : 'Selected: paused',
   });
 }
 
@@ -63,7 +66,13 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  if (changes.recording) paintBadge();
+  if (
+    changes.recording ||
+    changes.captureSelection ||
+    changes.captureClipboard
+  ) {
+    paintBadge();
+  }
   if (changes.retentionDays) runCleanup();
 });
 
@@ -88,8 +97,9 @@ async function handleSave(message, sender) {
   // The extension is not enabled in incognito, but check anyway.
   if (sender.tab?.incognito) return { saved: false, reason: 'incognito' };
 
-  const { recording, blockedHosts } = await getSettings();
+  const { recording, blockedHosts, captureSelection } = await getSettings();
   if (!recording) return { saved: false, reason: 'paused' };
+  if (!captureSelection) return { saved: false, reason: 'off' };
 
   const url = message.url || sender.tab?.url || '';
   if (isBlocked(hostOfUrl(url), blockedHosts)) {
@@ -104,6 +114,31 @@ async function handleSave(message, sender) {
   return { saved: true, ...result };
 }
 
+/**
+ * Save the clipboard text after the user presses the shortcut.
+ * The record has no source page, so it carries no url and no title.
+ */
+async function handleClipboard(message) {
+  const { recording, blockedHosts, captureClipboard } = await getSettings();
+  if (!recording) return { saved: false, reason: 'paused' };
+  if (!captureClipboard) return { saved: false, reason: 'off' };
+  if (isBlocked(hostOfUrl(message.pageUrl), blockedHosts)) {
+    return { saved: false, reason: 'blocked' };
+  }
+
+  const text = String(message.text || '').trim();
+  const keep = shouldSaveClipboard(text, { newestText: await newestText() });
+  if (!keep) return { saved: false, reason: 'duplicate' };
+
+  const result = await addSelection({
+    text,
+    url: '',
+    title: '',
+    source: 'clipboard',
+  });
+  return { saved: true, ...result };
+}
+
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (message?.type === 'selected:save') {
     handleSave(message, sender)
@@ -113,6 +148,16 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         respond({ saved: false, error: String(error) });
       });
     return true; // respond() is called later
+  }
+
+  if (message?.type === 'selected:clipboard') {
+    handleClipboard(message)
+      .then(respond)
+      .catch((error) => {
+        console.error('Selected: could not save the clipboard', error);
+        respond({ saved: false, error: String(error) });
+      });
+    return true;
   }
 
   if (message?.type === 'selected:count') {

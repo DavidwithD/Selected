@@ -35,6 +35,9 @@ const ui = {
   pageSize: el('pageSize'),
   retention: el('retention'),
   blocked: el('blocked'),
+  captureSelection: el('captureSelection'),
+  captureClipboard: el('captureClipboard'),
+  clipboardModifier: el('clipboardModifier'),
   saveSettings: el('saveSettings'),
   toast: el('toast'),
 };
@@ -102,6 +105,24 @@ function highlighted(text, term) {
   return fragment;
 }
 
+/** A link to the page, or a label when the text came from the clipboard. */
+function sourceTag(record) {
+  if (record.source === 'clipboard') {
+    const chip = document.createElement('span');
+    chip.className = 'chip';
+    chip.textContent = 'Clipboard';
+    chip.title = 'Read from the clipboard. There is no source page.';
+    return chip;
+  }
+  const link = document.createElement('a');
+  link.href = record.url;
+  link.target = '_blank';
+  link.rel = 'noreferrer';
+  link.textContent = record.host || 'unknown';
+  link.title = record.url;
+  return link;
+}
+
 function buildRow(record) {
   const row = document.createElement('li');
   row.className = 'row';
@@ -129,17 +150,11 @@ function buildRow(record) {
 
   const meta = document.createElement('div');
   meta.className = 'meta';
-  const link = document.createElement('a');
-  link.href = record.url;
-  link.target = '_blank';
-  link.rel = 'noreferrer';
-  link.textContent = record.host || 'unknown';
-  link.title = record.url;
   const when = document.createElement('span');
   when.textContent = formatTime(record.ts);
   const title = document.createElement('span');
   title.textContent = record.title || '';
-  meta.append(link, when, title);
+  meta.append(sourceTag(record), when, title);
 
   body.append(text, meta);
 
@@ -340,6 +355,25 @@ ui.recording.addEventListener('change', () => {
   toast(ui.recording.checked ? 'Recording' : 'Paused');
 });
 
+// A capture switch takes effect when it is clicked, not on Save.
+ui.captureSelection.addEventListener('change', () => {
+  setSettings({ captureSelection: ui.captureSelection.checked });
+  toast(
+    ui.captureSelection.checked
+      ? 'Saving what you select'
+      : 'Selection capture off',
+  );
+});
+
+ui.captureClipboard.addEventListener('change', () => {
+  setSettings({ captureClipboard: ui.captureClipboard.checked });
+  toast(
+    ui.captureClipboard.checked
+      ? 'Saving what you copy'
+      : 'Clipboard capture off',
+  );
+});
+
 ui.saveSettings.addEventListener('click', async () => {
   const days = Math.max(0, Math.min(3650, Number(ui.retention.value) || 0));
   const blockedHosts = parseHosts(ui.blocked.value);
@@ -363,10 +397,15 @@ document.addEventListener('keydown', (event) => {
 });
 
 async function start() {
+  const { os } = await chrome.runtime.getPlatformInfo();
+  if (os === 'mac') ui.clipboardModifier.textContent = 'Command';
+
   const settings = await getSettings();
   ui.recording.checked = settings.recording;
   ui.retention.value = String(settings.retentionDays);
   ui.blocked.value = settings.blockedHosts.join('\n');
+  ui.captureSelection.checked = settings.captureSelection;
+  ui.captureClipboard.checked = settings.captureClipboard;
   state.pageSize = Number(ui.pageSize.value);
   await refreshHosts();
   await refresh();

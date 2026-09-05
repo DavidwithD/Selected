@@ -26,7 +26,8 @@ content script only runs on pages loaded after the reload.
 - `lib/db.js` holds the queries. `lib/settings.js` holds the settings and the
   blocklist rules. `lib/format.js` builds the export files.
 
-A record is `{ id, text, ts, url, title, host }`.
+A record is `{ id, text, ts, url, title, host, source }`. `source` is
+`selection` or `clipboard`. Each source has its own switch.
 
 ## What it never saves
 
@@ -38,15 +39,49 @@ A record is `{ id, text, ts, url, title, host }`.
 
 A selection you widen within 4 seconds replaces the narrower one.
 
+## Clipboard capture
+
+Off by default. Turn it on under Settings, "Save what I copy".
+
+A content script cannot run inside an extension popup. Chrome forbids one
+extension from injecting into another extension's pages. Some dictionaries draw
+their popup as a `chrome-extension://` iframe inside the page. That frame is
+closed the same way. Text you select there is out of reach.
+
+The clipboard is the way in. Select the text in the popup and press Ctrl+C.
+Click back on the page. Then press Ctrl+Shift+S. On macOS
+Command+Shift+S works too. The extension reads the clipboard and saves what it
+finds.
+
+The key is the only trigger. Nothing is read while you work, and nothing is read
+after you switch back from another application. A message in the corner of the
+page says what happened.
+
+The shortcut is fixed. You cannot change it yet.
+
+A clipboard record has no source page. It is stored under the host `clipboard`,
+so the site filter can pick it out, and the list shows a `Clipboard` label in
+place of a link.
+
+A second press on the same clipboard saves nothing. The text is skipped when it
+is already the newest record.
+
 ## Settings
 
 Open the page and expand "Settings".
 
-- **Recording** — the switch in the header. The badge shows `off` when paused.
+- **Recording** — the switch in the header. It pauses both sources at once. The
+  badge shows `off` when paused.
+- **Save what I select** — on by default. Text you select on a page.
+- **Save what I copy** — off by default. See "Clipboard capture" above.
 - **Keep selections for N days** — default 90. A cleanup runs every 6 hours and
   on browser start. 0 keeps everything.
 - **Never record on these sites** — one host per line. A host also covers its
-  subdomains.
+  subdomains. The blocklist stops clipboard capture on those sites too.
+
+The two source switches are independent. Turn selection off and clipboard on to
+save only what you copy. The badge shows `off` when both are off, the same as a
+pause.
 
 ## Scripts
 
