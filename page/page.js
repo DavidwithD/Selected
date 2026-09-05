@@ -37,6 +37,7 @@ const ui = {
   blocked: el('blocked'),
   captureSelection: el('captureSelection'),
   captureClipboard: el('captureClipboard'),
+  clipboardModifier: el('clipboardModifier'),
   saveSettings: el('saveSettings'),
   toast: el('toast'),
 };
@@ -110,7 +111,7 @@ function sourceTag(record) {
     const chip = document.createElement('span');
     chip.className = 'chip';
     chip.textContent = 'Clipboard';
-    chip.title = 'Copied while a popup was open. There is no source page.';
+    chip.title = 'Read from the clipboard. There is no source page.';
     return chip;
   }
   const link = document.createElement('a');
@@ -396,6 +397,9 @@ document.addEventListener('keydown', (event) => {
 });
 
 async function start() {
+  const { os } = await chrome.runtime.getPlatformInfo();
+  if (os === 'mac') ui.clipboardModifier.textContent = 'Command';
+
   const settings = await getSettings();
   ui.recording.checked = settings.recording;
   ui.retention.value = String(settings.retentionDays);

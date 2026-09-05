@@ -6,8 +6,6 @@ const MAX_LENGTH = 20000;
 const DEBOUNCE_MS = 250;
 // Same text selected again inside this window is ignored.
 const REPEAT_WINDOW_MS = 4000;
-// A blur longer than this is not a popup.
-const POPUP_GAP_MS = 60000;
 
 let recording = true;
 let blocked = false;
@@ -15,8 +13,6 @@ let captureSelection = true;
 let captureClipboard = false;
 let timer = null;
 let last = { text: '', at: 0 };
-let blurAt = 0;
-let wentHidden = false;
 
 // Same rule as isBlocked() in lib/settings.js. Repeated here because a content
 // script cannot import a module.
@@ -116,30 +112,73 @@ document.addEventListener(
 // Clipboard capture, off by default.
 //
 // A content script cannot run inside an extension popup. Chrome forbids one
-// extension from injecting into another extension's pages. The clipboard is the
-// only way to reach text selected there.
+// extension from injecting into another extension's pages. A dictionary that
+// draws its popup as a chrome-extension:// iframe inside the page is closed the
+// same way. The clipboard is the only channel to text selected there.
 //
-// A popup leaves a shape on the page below it: the window loses focus, the tab
-// stays visible, and focus comes back. Reading the clipboard on that shape skips
-// tab switches and minimised windows.
+// The read runs on a keypress. Copy in the popup, click back on the page, then
+// press the shortcut. Nothing is read until you ask for it.
 //
-// Switching to another application draws the same shape. Text copied there is
-// captured too. The setting on the manager page says so.
+// A blur/focus heuristic came first and failed. docs/plan.md holds why.
+
+// Ctrl+Shift+S, or Command+Shift+S on macOS. The key is fixed.
+const SHORTCUT_KEY = 's';
+const TOAST_MS = 1800;
+
+let toastHost = null;
+let toastBox = null;
+let toastTimer = null;
+
+function isShortcut(event) {
+  if (event.key?.toLowerCase() !== SHORTCUT_KEY) return false;
+  if (!event.shiftKey || event.altKey) return false;
+  return event.ctrlKey || event.metaKey;
+}
+
+/**
+ * Show a short message in the corner of the page.
+ *
+ * The message sits in a closed shadow root. Page styles cannot reach it, and
+ * page scripts cannot read it.
+ */
+function toast(message) {
+  if (!toastHost) {
+    toastHost = document.createElement('div');
+    toastHost.style.cssText =
+      'all: initial; position: fixed; right: 16px; bottom: 16px;' +
+      ' z-index: 2147483647;';
+    const root = toastHost.attachShadow({ mode: 'closed' });
+    const style = document.createElement('style');
+    style.textContent =
+      'div { font: 13px/1.4 system-ui, sans-serif; color: #fff;' +
+      ' background: #1f1f1f; padding: 8px 12px; border-radius: 6px;' +
+      ' box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); }';
+    toastBox = document.createElement('div');
+    root.append(style, toastBox);
+  }
+  toastBox.textContent = message;
+  (document.body || document.documentElement).append(toastHost);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastHost.remove(), TOAST_MS);
+}
 
 async function readClipboard() {
-  if (!captureClipboard || !recording || blocked) return;
-  if (!document.hasFocus()) return;
+  if (!captureClipboard) return toast('Selected: turn on "Save what I copy"');
+  if (!recording) return toast('Selected: paused');
+  if (blocked) return toast('Selected: this site is blocked');
 
   let text = '';
   try {
     text = await navigator.clipboard.readText();
   } catch {
-    // Focus was lost again, or the page forbids the read. Nothing to do.
-    return;
+    // The frame lost focus, or the page forbids the read.
+    return toast('Selected: could not read the clipboard');
   }
 
   text = text.trim();
-  if (text.length < MIN_LENGTH || text.length > MAX_LENGTH) return;
+  if (text.length < MIN_LENGTH)
+    return toast('Selected: the clipboard is empty');
+  if (text.length > MAX_LENGTH) return toast('Selected: that text is too long');
 
   chrome.runtime.sendMessage(
     {
@@ -148,27 +187,25 @@ async function readClipboard() {
       // For the blocklist check. It is not stored on the record.
       pageUrl: location.href,
     },
-    () => {
+    (response) => {
+      // The service worker may be restarting. Ignore the error.
       void chrome.runtime.lastError;
+      if (response?.saved) toast('Selected: saved');
+      else if (response?.reason === 'duplicate')
+        toast('Selected: already saved');
+      else toast('Selected: not saved');
     },
   );
 }
 
-// One reader per tab. A frame does not need its own.
-if (window.top === window) {
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) wentHidden = true;
-  });
-
-  window.addEventListener('blur', () => {
-    blurAt = Date.now();
-  });
-
-  window.addEventListener('focus', () => {
-    const looksLikePopup =
-      blurAt > 0 && !wentHidden && Date.now() - blurAt < POPUP_GAP_MS;
-    blurAt = 0;
-    wentHidden = false;
-    if (looksLikePopup) readClipboard();
-  });
-}
+// The listener runs in every frame. A key event reaches only the frame that has
+// focus, so one press sends one message.
+document.addEventListener(
+  'keydown',
+  (event) => {
+    if (!isShortcut(event)) return;
+    event.preventDefault();
+    readClipboard();
+  },
+  true,
+);

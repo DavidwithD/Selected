@@ -81,20 +81,39 @@ Manager page:
 
 Added on 2026-08-27. Off by default, one checkbox on the manager page.
 
-- The content script watches the top frame for a blur/focus pair while the tab
-  stays visible. That is the shape a popup leaves behind.
-- On that shape it reads the clipboard and sends the text to the service worker.
-- The service worker drops the text when it matches the previous read, held in
-  `chrome.storage.session`, or the newest record.
+- The content script reads the clipboard on Ctrl+Shift+S, Command+Shift+S on
+  macOS. The listener runs in every frame. A key event reaches only the focused
+  frame, so one press sends one message.
+- It sends the text to the service worker, which drops it when it matches the
+  newest record.
 - The record is stored with `source: 'clipboard'`, host `clipboard`, no url.
+- The content script shows the result in a toast. The toast sits in a closed
+  shadow root, out of reach of page styles and page scripts.
 - Each source has its own switch: `captureSelection` on, `captureClipboard`
   off. The header `recording` switch pauses both. The badge reads `off` when
   nothing can be saved.
 
-Not solved: an alt-tab to another application draws the same shape as a popup.
-`chrome.windows.onFocusChanged` may separate them. It is untested. If it stays
-quiet while a popup opens, the service worker can refuse a capture taken across
-a gap where the browser itself lost focus.
+## Why the shortcut replaced blur/focus (2026-09-05)
+
+The first version read the clipboard when the top window fired blur and then
+focus, with the tab still visible. That guessed at a popup. It failed twice.
+
+A popup drawn as a `chrome-extension://` iframe inside the page removes itself
+when you click back. The window fires blur when focus enters the iframe. It
+never fires focus, because the browser window never lost focus at the OS level.
+The read never ran.
+
+The same shape also appeared on every switch back from another application. The
+extension read whatever you had copied there.
+
+A keypress fixes both cases. The read happens only when the user presses the
+key. The `lastClipboard` record in `chrome.storage.session` went with the
+heuristic. It existed because the ambient read fired on every focus.
+
+Open: the key is fixed in `content.js`. `chrome.commands` would let the user
+remap it, but it needs `host_permissions` for `tabs.sendMessage`, because the
+service worker has no clipboard of its own. That is a wider install prompt for a
+remappable key.
 
 ## Phase 2 — next
 

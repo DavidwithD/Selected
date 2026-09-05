@@ -19,17 +19,12 @@ test('skips a text over the maximum length', () => {
   assert.equal(shouldSaveClipboard('x'.repeat(MAX_LENGTH + 1)), false);
 });
 
-test('skips the text read on the previous focus', () => {
-  assert.equal(shouldSaveClipboard('hello', { lastClipboard: 'hello' }), false);
+test('skips a text already saved', () => {
+  assert.equal(shouldSaveClipboard('hello', { newestText: 'hello' }), false);
   assert.equal(
-    shouldSaveClipboard('  hello  ', { lastClipboard: 'hello' }),
+    shouldSaveClipboard('  hello  ', { newestText: 'hello' }),
     false,
   );
-  assert.equal(shouldSaveClipboard('hello', { lastClipboard: 'other' }), true);
-});
-
-test('skips a text already saved as a selection', () => {
-  assert.equal(shouldSaveClipboard('hello', { newestText: 'hello' }), false);
   assert.equal(shouldSaveClipboard('hello', { newestText: 'hell' }), true);
 });
 

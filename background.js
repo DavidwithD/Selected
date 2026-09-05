@@ -11,9 +11,6 @@ import { DEFAULTS, getSettings, isBlocked, hostOfUrl } from './lib/settings.js';
 import { shouldSaveClipboard } from './lib/clipboard.js';
 
 const PAGE_URL = 'page/page.html';
-// The last clipboard text, in session storage. That storage is memory only and
-// is cleared when the browser closes.
-const LAST_CLIPBOARD = 'lastClipboard';
 const CLEANUP_ALARM = 'selected:cleanup';
 const CLEANUP_EVERY_MINUTES = 6 * 60;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -118,7 +115,7 @@ async function handleSave(message, sender) {
 }
 
 /**
- * Save text the user copied while a popup was open.
+ * Save the clipboard text after the user presses the shortcut.
  * The record has no source page, so it carries no url and no title.
  */
 async function handleClipboard(message) {
@@ -130,15 +127,7 @@ async function handleClipboard(message) {
   }
 
   const text = String(message.text || '').trim();
-  const stored = await chrome.storage.session.get({ [LAST_CLIPBOARD]: '' });
-  const keep = shouldSaveClipboard(text, {
-    lastClipboard: stored[LAST_CLIPBOARD],
-    newestText: await newestText(),
-  });
-
-  // Remember the text either way. A text skipped here must not come back on the
-  // next focus.
-  await chrome.storage.session.set({ [LAST_CLIPBOARD]: text });
+  const keep = shouldSaveClipboard(text, { newestText: await newestText() });
   if (!keep) return { saved: false, reason: 'duplicate' };
 
   const result = await addSelection({

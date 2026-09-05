@@ -314,3 +314,11 @@ main {
   font-size: 12px;
   max-width: 320px;
 }
+
+.settings-grid kbd {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  font: inherit;
+  font-family: ui-monospace, monospace;
+}

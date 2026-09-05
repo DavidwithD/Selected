@@ -44,27 +44,27 @@ A selection you widen within 4 seconds replaces the narrower one.
 Off by default. Turn it on under Settings, "Save what I copy".
 
 A content script cannot run inside an extension popup. Chrome forbids one
-extension from injecting into another extension's pages. Text you select there
-is out of reach.
+extension from injecting into another extension's pages. Some dictionaries draw
+their popup as a `chrome-extension://` iframe inside the page. That frame is
+closed the same way. Text you select there is out of reach.
 
-The clipboard is the way in. Select the text in the popup and press Ctrl+C. The
-popup closes when you click back on the page. The extension reads the clipboard
-at that moment and saves what it finds.
+The clipboard is the way in. Select the text in the popup and press Ctrl+C.
+Click back on the page. Then press Ctrl+Shift+S. On macOS
+Command+Shift+S works too. The extension reads the clipboard and saves what it
+finds.
 
-The trigger is a shape, not the popup itself: the window loses focus, the tab
-stays visible, focus comes back within a minute. Tab switches and minimised
-windows are skipped. Switching to another application draws the same shape, so
-text you copy in another application is saved too. The page cannot tell the two
-apart.
+The key is the only trigger. Nothing is read while you work, and nothing is read
+after you switch back from another application. A message in the corner of the
+page says what happened.
+
+The shortcut is fixed. You cannot change it yet.
 
 A clipboard record has no source page. It is stored under the host `clipboard`,
 so the site filter can pick it out, and the list shows a `Clipboard` label in
 place of a link.
 
-The same text is not saved twice. It is skipped when it is still in the
-clipboard on the next focus, and when it is already the newest record. The first
-focus after a browser restart is the exception. Whatever sits in the clipboard
-then is saved once.
+A second press on the same clipboard saves nothing. The text is skipped when it
+is already the newest record.
 
 ## Settings
 
