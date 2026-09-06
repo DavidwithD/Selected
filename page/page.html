@@ -49,6 +49,31 @@
       <button data-download="json">JSON</button>
       <button data-download="csv">CSV</button>
       <button data-download="txt">TXT</button>
+      <!-- Closed by default. The summary states the current choice, so pressing a
+           download button is never a guess about what the file will hold. -->
+      <details class="fields">
+        <summary id="fieldsSummary">carrying all 6 fields</summary>
+        <div class="fields-panel">
+          <label class="check"
+            ><input type="checkbox" data-field="text" checked />text</label
+          >
+          <label class="check"
+            ><input type="checkbox" data-field="url" checked />url</label
+          >
+          <label class="check"
+            ><input type="checkbox" data-field="title" checked />title</label
+          >
+          <label class="check"
+            ><input type="checkbox" data-field="host" checked />host</label
+          >
+          <label class="check"
+            ><input type="checkbox" data-field="source" checked />source</label
+          >
+          <label class="check"
+            ><input type="checkbox" data-field="savedAt" checked />date</label
+          >
+        </div>
+      </details>
       <span class="divider"></span>
       <button id="clearAll" class="danger ghost">Clear all</button>
     </section>

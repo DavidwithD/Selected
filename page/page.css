@@ -257,6 +257,52 @@ main {
   font-size: 13px;
 }
 
+/* The export field choice. Closed it is one control the width of a button. Open
+   it floats over the list, so the bar does not reflow and Clear all stays put. */
+.fields {
+  position: relative;
+  font-size: 12px;
+}
+
+.fields > summary {
+  list-style: none;
+  cursor: pointer;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+
+.fields > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fields > summary::after {
+  content: ' \25be';
+}
+
+.fields > summary:hover {
+  border-color: var(--accent);
+}
+
+.fields-panel {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
+  font-size: 13px;
+}
+
 .settings {
   background: var(--panel);
   border-bottom: 1px solid var(--border);

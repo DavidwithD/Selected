@@ -1,7 +1,7 @@
 # Selected — plan
 
-Status: phase 1 and clipboard capture are built and loadable. `npm test`
-passes, 27 tests.
+Status: phase 1, clipboard capture and the export field choice are built and
+loadable. `npm test` passes, 37 tests.
 
 ## Premises
 
@@ -45,7 +45,7 @@ Answered on 2026-08-21.
 | `lib/db.js`              | IndexedDB open, add, query, delete, retention. |
 | `lib/settings.js`        | Defaults, blocklist rules, host parsing.       |
 | `lib/clipboard.js`       | The clipboard dedupe rule.                     |
-| `lib/format.js`          | JSON, CSV and TXT builders. Time formatting.   |
+| `lib/format.js`          | JSON, CSV and TXT builders. The field list.    |
 | `page/page.html/css/js`  | Manager page.                                  |
 | `scripts/make-icons.cjs` | Draws the three PNG icons.                     |
 | `test/*.test.js`         | Storage and blocklist tests. `npm test`.       |
@@ -72,7 +72,7 @@ Manager page:
 - Paging, 25 / 50 / 100 per page.
 - Row actions: copy, delete, click the text to expand.
 - Bulk: select page, copy selected, delete selected.
-- Download every match as JSON, CSV or TXT.
+- Download every match as JSON, CSV or TXT, carrying the fields you tick.
 - Clear all.
 - Settings: recording switch, retention days, blocked hosts.
 - Dark mode. `/` focuses the search box.
@@ -114,6 +114,35 @@ Open: the key is fixed in `content.js`. `chrome.commands` would let the user
 remap it, but it needs `host_permissions` for `tabs.sendMessage`, because the
 service worker has no clipboard of its own. That is a wider install prompt for a
 remappable key.
+
+## Export field choice (done)
+
+Added on 2026-09-06. One closed control beside the three download buttons. It
+opens on six boxes: text, url, title, host, source, date.
+
+The boxes were inline in the bar first. Six of them pushed Clear all onto a
+second row under 1000px, away from the divider that separated it. Settings was
+the other place considered. It was rejected: the choice decides what a download
+button writes, so it has to be readable where that button is. The summary text
+is what makes the closed control honest.
+
+- `FIELDS` in `lib/format.js` is the one list. Every builder takes the chosen
+  fields and sorts them back into that order, so one set of boxes writes one
+  order of columns.
+- The choice is stored as `exportFields` in `chrome.storage.local`. `null` means
+  every field, which is what a profile with no stored list reads as.
+- `id` is not on offer. It is the database's own key and means nothing outside
+  this profile. Phase 4 wants a JSON import; that is when a record needs an id
+  a file can carry.
+- TXT gained title and source on its meta line. Untick both and it writes what
+  it wrote before.
+- Every box unticked is refused at the button. The builders would write empty
+  records rather than throw, and the tests hold that.
+- The summary names two fields and a count. Five names make the control wider
+  than the three buttons beside it.
+
+Open: the choice is one set for all three formats. A CSV wanted as a table and a
+TXT wanted for reading may want different sets.
 
 ## Phase 2 — next
 

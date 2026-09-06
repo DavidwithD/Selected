@@ -24,7 +24,8 @@ content script only runs on pages loaded after the reload.
   runs the cleanup that drops old records.
 - `page/` is the manager page. It reads the same database directly.
 - `lib/db.js` holds the queries. `lib/settings.js` holds the settings and the
-  blocklist rules. `lib/format.js` builds the export files.
+  blocklist rules. `lib/format.js` builds the export files and holds the list of
+  fields they can carry.
 
 A record is `{ id, text, ts, url, title, host, source }`. `source` is
 `selection` or `clipboard`. Each source has its own switch.
@@ -65,6 +66,25 @@ place of a link.
 
 A second press on the same clipboard saves nothing. The text is skipped when it
 is already the newest record.
+
+## Download
+
+Three buttons write every row the current filter matches: JSON, CSV or TXT.
+
+Beside them sits one control, closed. It reads what the next file will carry —
+"carrying all 6 fields", or "carrying text, url +1". Open it for six boxes:
+**text**, **url**, **title**, **host**, **source**, **date**. All six start
+ticked. The choice applies to all three buttons and is remembered between
+visits.
+
+Each format uses the choice its own way.
+
+- **JSON** keeps only the chosen keys on each item.
+- **CSV** writes one column per chosen field, header included.
+- **TXT** puts the text on top, then the title, host, source and date on one
+  meta line, then the url. A part it was not given is left out.
+
+Unticking every box downloads nothing. The page says to pick one.
 
 ## Settings
 

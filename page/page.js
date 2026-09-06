@@ -9,7 +9,7 @@ import {
   countAll,
   listHosts,
 } from '../lib/db.js';
-import { FORMATS, formatTime, stamp } from '../lib/format.js';
+import { FIELD_LABELS, FORMATS, formatTime, stamp } from '../lib/format.js';
 import { getSettings, setSettings, parseHosts } from '../lib/settings.js';
 
 const el = (id) => document.getElementById(id);
@@ -37,6 +37,7 @@ const ui = {
   blocked: el('blocked'),
   captureSelection: el('captureSelection'),
   captureClipboard: el('captureClipboard'),
+  fieldsSummary: el('fieldsSummary'),
   clipboardModifier: el('clipboardModifier'),
   saveSettings: el('saveSettings'),
   toast: el('toast'),
@@ -246,9 +247,37 @@ async function copyText(text, message) {
   }
 }
 
-function download(rows, kind) {
+/**
+ * The field boxes, in the markup order. A box carries the field it writes, the
+ * same way a download button carries its format.
+ */
+const fieldBoxes = [...document.querySelectorAll('[data-field]')];
+
+/** The fields ticked now. The builders put them back in FIELDS order. */
+const pickedFields = () =>
+  fieldBoxes.filter((box) => box.checked).map((box) => box.dataset.field);
+
+/**
+ * What the closed control says. The choice is only useful if it is readable
+ * without opening anything, because it decides what a download button writes.
+ *
+ * Two names and a count, rather than all of them. Five names make the control
+ * wider than the three buttons beside it.
+ */
+function tellFields() {
+  const picked = pickedFields();
+  if (picked.length === 0) return 'carrying nothing';
+  if (picked.length === fieldBoxes.length) {
+    return `carrying all ${fieldBoxes.length} fields`;
+  }
+  const names = picked.map((field) => FIELD_LABELS[field]);
+  const rest = names.length - 2;
+  return `carrying ${names.slice(0, 2).join(', ')}${rest > 0 ? ` +${rest}` : ''}`;
+}
+
+function download(rows, kind, fields) {
   const format = FORMATS[kind];
-  const blob = new Blob([format.build(rows)], {
+  const blob = new Blob([format.build(rows, fields)], {
     type: `${format.mime};charset=utf-8`,
   });
   const url = URL.createObjectURL(blob);
@@ -342,10 +371,22 @@ ui.clearAll.addEventListener('click', async () => {
 
 for (const button of document.querySelectorAll('[data-download]')) {
   button.addEventListener('click', async () => {
+    // Every box unticked would write a file of empty records. Say so instead.
+    const fields = pickedFields();
+    if (fields.length === 0) return toast('Pick at least one field');
     const rows = await queryAll(filters());
     if (rows.length === 0) return toast('Nothing to download');
-    download(rows, button.dataset.download);
+    download(rows, button.dataset.download, fields);
     toast(`Downloaded ${rows.length}`);
+  });
+}
+
+// The choice is a setting, not a per-download question. It is written on each
+// click so the next visit downloads what this one did.
+for (const box of fieldBoxes) {
+  box.addEventListener('change', () => {
+    setSettings({ exportFields: pickedFields() });
+    ui.fieldsSummary.textContent = tellFields();
   });
 }
 
@@ -406,6 +447,12 @@ async function start() {
   ui.blocked.value = settings.blockedHosts.join('\n');
   ui.captureSelection.checked = settings.captureSelection;
   ui.captureClipboard.checked = settings.captureClipboard;
+  // null is the default: every field. A stored list ticks exactly what it holds.
+  if (settings.exportFields) {
+    const kept = new Set(settings.exportFields);
+    for (const box of fieldBoxes) box.checked = kept.has(box.dataset.field);
+  }
+  ui.fieldsSummary.textContent = tellFields();
   state.pageSize = Number(ui.pageSize.value);
   await refreshHosts();
   await refresh();
