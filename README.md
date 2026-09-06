@@ -34,7 +34,7 @@ A record is `{ id, text, ts, url, title, host, source }`. `source` is
 
 - Text in an `<input>` or a `<textarea>`.
 - Anything from an incognito window. The extension is disabled there.
-- Anything from a host on your blocklist, and its subdomains.
+- Anything the site lists refuse. See "Which sites record" below.
 - A selection shorter than 2 characters or longer than 20000.
 - The same text twice within 4 seconds.
 
@@ -96,8 +96,27 @@ Open the page and expand "Settings".
 - **Save what I copy** — off by default. See "Clipboard capture" above.
 - **Keep selections for N days** — default 90. A cleanup runs every 6 hours and
   on browser start. 0 keeps everything.
-- **Never record on these sites** — one host per line. A host also covers its
-  subdomains. The blocklist stops clipboard capture on those sites too.
+- **Record on** — see below.
+
+### Which sites record
+
+One setting, two ways round.
+
+- **every site except these** — the default. It records everywhere but the
+  hosts you list. The blocklist stops clipboard capture on those sites too.
+- **only these sites** — it records nowhere but the hosts you list. An empty
+  list records nothing, and saving one says so.
+
+One host per line, and a host also covers its subdomains. Both lists are kept,
+so switching modes does not lose the one you typed.
+
+The toolbar badge reads `off` on any page that will not record. A page that
+saves nothing looks the same as a page with nothing worth saving, and the badge
+is what separates them.
+
+The allow-list does not stop the clipboard shortcut. Selection capture is
+ambient and the list narrows it. Pressing Ctrl+Shift+S is a request for that
+text on that page.
 
 The two source switches are independent. Turn selection off and clipboard on to
 save only what you copy. The badge shows `off` when both are off, the same as a

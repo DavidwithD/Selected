@@ -35,6 +35,10 @@ const ui = {
   pageSize: el('pageSize'),
   retention: el('retention'),
   blocked: el('blocked'),
+  hostMode: el('hostMode'),
+  allowed: el('allowed'),
+  blockedField: el('blockedField'),
+  allowedField: el('allowedField'),
   captureSelection: el('captureSelection'),
   captureClipboard: el('captureClipboard'),
   fieldsSummary: el('fieldsSummary'),
@@ -415,17 +419,42 @@ ui.captureClipboard.addEventListener('change', () => {
   );
 });
 
+/** Show the list the mode uses. The other one keeps its text for a swap back. */
+function showHostList() {
+  const allow = ui.hostMode.value === 'allow';
+  ui.blockedField.hidden = allow;
+  ui.allowedField.hidden = !allow;
+}
+
+// The mode takes effect on Save, with the lists it decides between. A switch
+// that took effect on click would apply a list nobody had reviewed.
+ui.hostMode.addEventListener('change', showHostList);
+
 ui.saveSettings.addEventListener('click', async () => {
   const days = Math.max(0, Math.min(3650, Number(ui.retention.value) || 0));
   const blockedHosts = parseHosts(ui.blocked.value);
-  await setSettings({ retentionDays: days, blockedHosts });
+  const allowedHosts = parseHosts(ui.allowed.value);
+  const hostMode = ui.hostMode.value === 'allow' ? 'allow' : 'block';
+  await setSettings({
+    retentionDays: days,
+    blockedHosts,
+    allowedHosts,
+    hostMode,
+  });
   ui.retention.value = String(days);
   ui.blocked.value = blockedHosts.join('\n');
-
+  ui.allowed.value = allowedHosts.join('\n');
   // The service worker drops records that fall outside the new window.
   const result = await chrome.runtime.sendMessage({ type: 'selected:cleanup' });
   const dropped = result?.deleted || 0;
-  toast(dropped ? `Saved. Dropped ${dropped} old records.` : 'Settings saved');
+  // An allow-list with nothing on it records nothing anywhere. It is a valid
+  // setting and a silent one, so saving it says so.
+  const empty = hostMode === 'allow' && allowedHosts.length === 0;
+  if (empty) toast('Saved. An empty allow-list records nothing.');
+  else
+    toast(
+      dropped ? `Saved. Dropped ${dropped} old records.` : 'Settings saved',
+    );
   await refreshHosts();
   await refresh();
 });
@@ -445,6 +474,9 @@ async function start() {
   ui.recording.checked = settings.recording;
   ui.retention.value = String(settings.retentionDays);
   ui.blocked.value = settings.blockedHosts.join('\n');
+  ui.allowed.value = settings.allowedHosts.join('\n');
+  ui.hostMode.value = settings.hostMode;
+  showHostList();
   ui.captureSelection.checked = settings.captureSelection;
   ui.captureClipboard.checked = settings.captureClipboard;
   // null is the default: every field. A stored list ticks exactly what it holds.

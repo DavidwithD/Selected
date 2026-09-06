@@ -1,5 +1,5 @@
 // Watches for text selections and sends them to the service worker.
-// Runs in every frame of every page, except blocked hosts.
+// Runs in every frame of every page. What it records depends on the host.
 
 const MIN_LENGTH = 2;
 const MAX_LENGTH = 20000;
@@ -14,43 +14,78 @@ let captureClipboard = false;
 let timer = null;
 let last = { text: '', at: 0 };
 
-// Same rule as isBlocked() in lib/settings.js. Repeated here because a content
-// script cannot import a module.
-function hostIsBlocked(hosts) {
+// The lists, as this frame last read them. Kept whole rather than reduced to a
+// boolean, because a change to either one has to be re-decided against the
+// mode, and a change to the mode against both lists.
+let hostMode = 'block';
+let blockedHosts = [];
+let allowedHosts = [];
+
+// Same rule as matchesHost() in lib/settings.js. Repeated here because a
+// content script cannot import a module. background.js decides again with the
+// real rule before anything is written; this copy only saves a message per
+// selection on a page that will not record.
+function hostMatches(hosts) {
   const target = location.hostname.toLowerCase();
-  return (hosts || []).some((blockedHost) => {
-    const b = String(blockedHost).toLowerCase();
-    return b && (target === b || target.endsWith(`.${b}`));
+  return (hosts || []).some((listed) => {
+    const one = String(listed).toLowerCase();
+    return one && (target === one || target.endsWith(`.${one}`));
   });
+}
+
+/**
+ * Re-decide this frame's gate, then tell the worker which host it is on.
+ *
+ * The report is what paints this tab's badge. The worker has no `tabs`
+ * permission and cannot read the URL itself. Only the top frame reports, or
+ * one page with ten iframes would paint the badge ten times.
+ */
+function settle() {
+  blocked =
+    hostMode === 'allow'
+      ? !hostMatches(allowedHosts)
+      : hostMatches(blockedHosts);
+  if (window.top !== window) return;
+  chrome.runtime
+    .sendMessage({ type: 'selected:host', host: location.hostname })
+    .catch(() => {});
 }
 
 chrome.storage.local.get(
   {
     recording: true,
+    hostMode: 'block',
     blockedHosts: [],
+    allowedHosts: [],
     captureSelection: true,
     captureClipboard: false,
   },
   (state) => {
     recording = state.recording !== false;
-    blocked = hostIsBlocked(state.blockedHosts);
+    hostMode = state.hostMode === 'allow' ? 'allow' : 'block';
+    blockedHosts = state.blockedHosts || [];
+    allowedHosts = state.allowedHosts || [];
     captureSelection = state.captureSelection !== false;
     captureClipboard = state.captureClipboard === true;
+    settle();
   },
 );
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if (changes.recording) recording = changes.recording.newValue !== false;
-  if (changes.blockedHosts) {
-    blocked = hostIsBlocked(changes.blockedHosts.newValue);
+  if (changes.hostMode) {
+    hostMode = changes.hostMode.newValue === 'allow' ? 'allow' : 'block';
   }
+  if (changes.blockedHosts) blockedHosts = changes.blockedHosts.newValue || [];
+  if (changes.allowedHosts) allowedHosts = changes.allowedHosts.newValue || [];
   if (changes.captureSelection) {
     captureSelection = changes.captureSelection.newValue !== false;
   }
   if (changes.captureClipboard) {
     captureClipboard = changes.captureClipboard.newValue === true;
   }
+  settle();
 });
 
 // Text in a form field is never saved.
@@ -165,7 +200,12 @@ function toast(message) {
 async function readClipboard() {
   if (!captureClipboard) return toast('Selected: turn on "Save what I copy"');
   if (!recording) return toast('Selected: paused');
-  if (blocked) return toast('Selected: this site is blocked');
+  // Only the blocklist stops a shortcut, and only in block mode. The allow-list
+  // narrows ambient capture. This press is a request for this text.
+  // background.js applies the same rule before it writes.
+  if (hostMode === 'block' && hostMatches(blockedHosts)) {
+    return toast('Selected: this site is blocked');
+  }
 
   let text = '';
   try {

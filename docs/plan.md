@@ -1,7 +1,7 @@
 # Selected — plan
 
 Status: phase 1, clipboard capture and the export field choice are built and
-loadable. `npm test` passes, 37 tests.
+loadable. `npm test` passes, 46 tests.
 
 ## Premises
 
@@ -33,7 +33,7 @@ Answered on 2026-08-21.
 | Retention  | Keep the last N days. Default 90. Editable on the page.      |
 | Duplicates | Keep every capture. The same text twice is two records.      |
 | Pause      | The switch on the page is enough. No popup, no context menu. |
-| Exclusions | Site blocklist, no incognito windows, no form fields at all. |
+| Exclusions | Site list, no incognito windows, no form fields at all.      |
 
 ## Files
 
@@ -43,7 +43,7 @@ Answered on 2026-08-21.
 | `content.js`             | Reads the selection, debounces, sends it.      |
 | `background.js`          | Writes records. Badge, icon click, cleanup.    |
 | `lib/db.js`              | IndexedDB open, add, query, delete, retention. |
-| `lib/settings.js`        | Defaults, blocklist rules, host parsing.       |
+| `lib/settings.js`        | Defaults, the site rules, host parsing.        |
 | `lib/clipboard.js`       | The clipboard dedupe rule.                     |
 | `lib/format.js`          | JSON, CSV and TXT builders. The field list.    |
 | `page/page.html/css/js`  | Manager page.                                  |
@@ -144,9 +144,35 @@ is what makes the closed control honest.
 Open: the choice is one set for all three formats. A CSV wanted as a table and a
 TXT wanted for reading may want different sets.
 
+## Site allow-list (done)
+
+Added on 2026-09-06. `hostMode` chooses which list decides: `block` records
+everywhere but `blockedHosts`, `allow` records nowhere but `allowedHosts`.
+
+- `hostRecords()` in `lib/settings.js` is the one decision. `matchesHost()` is
+  the subdomain rule both lists share. `isBlocked()` stays as its block-mode
+  name.
+- `content.js` keeps a copy of the rule, as it did before. It cannot import a
+  module. The copy only saves a message per selection; `background.js` decides
+  again with the real rule before anything is written.
+- The badge is per-tab now. It reads `off` on any page that will not record.
+  An allow-list saves nothing on most pages, and that is invisible without it.
+- The host comes from the content script, not from `tab.url`. Reading a tab's
+  URL needs the `tabs` permission, which is a wider install prompt for a badge.
+  A page with no content script keeps the global badge.
+- The clipboard shortcut ignores the allow-list. It obeys the blocklist in
+  block mode. A shortcut is a request; a selection is ambient.
+- The mode takes effect on Save, with the lists it decides between. Both lists
+  are stored, so a swap back finds the old one.
+
+Open: a page with no content script — the Web Store, `chrome://` pages, the
+built-in PDF viewer — shows the global badge rather than `off`. Those pages
+never recorded anything anyway.
+
 ## Phase 2 — next
 
-- A "Block this site" button on each row. It adds the host to the blocklist.
+- A "Block this site" button on each row. It adds the host to the list the
+  current mode uses.
 - Download only the selected rows, not just every match of the filter.
 - Undo after a delete.
 - A minimum length setting.

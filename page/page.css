@@ -257,6 +257,12 @@ main {
   font-size: 13px;
 }
 
+/* A hidden list has to lose the flex display the grid gives every label, or
+   [hidden] does nothing. */
+.settings-grid label[hidden] {
+  display: none;
+}
+
 /* The export field choice. Closed it is one control the width of a button. Open
    it floats over the list, so the bar does not reflow and Clear all stays put. */
 .fields {

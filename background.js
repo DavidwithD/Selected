@@ -7,7 +7,13 @@ import {
   deleteOlderThan,
   newestText,
 } from './lib/db.js';
-import { DEFAULTS, getSettings, isBlocked, hostOfUrl } from './lib/settings.js';
+import {
+  DEFAULTS,
+  getSettings,
+  hostOfUrl,
+  hostRecords,
+  isBlocked,
+} from './lib/settings.js';
 import { shouldSaveClipboard } from './lib/clipboard.js';
 
 const PAGE_URL = 'page/page.html';
@@ -15,15 +21,42 @@ const CLEANUP_ALARM = 'selected:cleanup';
 const CLEANUP_EVERY_MINUTES = 6 * 60;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** Both sources off, or recording paused. Nothing records anywhere. */
+const isLive = (settings) =>
+  settings.recording &&
+  (settings.captureSelection || settings.captureClipboard);
+
 // The badge reads 'off' when nothing can be saved: paused, or both sources off.
+// This is the default every tab starts from. A tab whose host is refused paints
+// over it in paintTab below.
 async function paintBadge() {
-  const { recording, captureSelection, captureClipboard } = await getSettings();
-  const live = recording && (captureSelection || captureClipboard);
+  const live = isLive(await getSettings());
   await chrome.action.setBadgeText({ text: live ? '' : 'off' });
   await chrome.action.setBadgeBackgroundColor({ color: '#8a8a8a' });
   await chrome.action.setTitle({
     title: live ? 'Selected: open saved text' : 'Selected: paused',
   });
+}
+
+/**
+ * Paint one tab's badge from the host its content script reported.
+ *
+ * An allow-list saves nothing on most pages, and a page that saves nothing
+ * looks exactly like a page with nothing worth saving. The badge is what makes
+ * the two different, so it is part of the allow-list rather than a nicety.
+ *
+ * The host comes from the content script because the extension has no `tabs`
+ * permission and cannot read a tab's URL. Asking for one would widen the
+ * install prompt for a badge.
+ */
+async function paintTab(tabId, host) {
+  const settings = await getSettings();
+  const records = isLive(settings) && hostRecords(host, settings);
+  await chrome.action.setBadgeText({ tabId, text: records ? '' : 'off' });
+  let title = 'Selected: open saved text';
+  if (!isLive(settings)) title = 'Selected: paused';
+  else if (!records) title = `Selected: not recording on ${host}`;
+  await chrome.action.setTitle({ tabId, title });
 }
 
 /** Drop records older than the retention window. 0 days keeps everything. */
@@ -97,12 +130,12 @@ async function handleSave(message, sender) {
   // The extension is not enabled in incognito, but check anyway.
   if (sender.tab?.incognito) return { saved: false, reason: 'incognito' };
 
-  const { recording, blockedHosts, captureSelection } = await getSettings();
-  if (!recording) return { saved: false, reason: 'paused' };
-  if (!captureSelection) return { saved: false, reason: 'off' };
+  const settings = await getSettings();
+  if (!settings.recording) return { saved: false, reason: 'paused' };
+  if (!settings.captureSelection) return { saved: false, reason: 'off' };
 
   const url = message.url || sender.tab?.url || '';
-  if (isBlocked(hostOfUrl(url), blockedHosts)) {
+  if (!hostRecords(hostOfUrl(url), settings)) {
     return { saved: false, reason: 'blocked' };
   }
 
@@ -119,10 +152,17 @@ async function handleSave(message, sender) {
  * The record has no source page, so it carries no url and no title.
  */
 async function handleClipboard(message) {
-  const { recording, blockedHosts, captureClipboard } = await getSettings();
-  if (!recording) return { saved: false, reason: 'paused' };
-  if (!captureClipboard) return { saved: false, reason: 'off' };
-  if (isBlocked(hostOfUrl(message.pageUrl), blockedHosts)) {
+  const settings = await getSettings();
+  if (!settings.recording) return { saved: false, reason: 'paused' };
+  if (!settings.captureClipboard) return { saved: false, reason: 'off' };
+  // The allow-list does not apply here. Selection capture is ambient and the
+  // list narrows it. A shortcut is a request for this text on this page.
+  // The blocklist still applies in block mode: a host named there is one no
+  // text should come from, however it is asked for.
+  if (
+    settings.hostMode === 'block' &&
+    isBlocked(hostOfUrl(message.pageUrl), settings.blockedHosts)
+  ) {
     return { saved: false, reason: 'blocked' };
   }
 
@@ -158,6 +198,20 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         respond({ saved: false, error: String(error) });
       });
     return true;
+  }
+
+  // Sent by every content script on load, and again whenever a setting that
+  // decides recording changes. It is the only way the worker learns a tab's
+  // host without the `tabs` permission.
+  if (message?.type === 'selected:host') {
+    const tabId = sender.tab?.id;
+    if (tabId !== undefined) {
+      paintTab(tabId, String(message.host || '')).catch((error) => {
+        console.error('Selected: could not paint the badge', error);
+      });
+    }
+    respond({ ok: true });
+    return false;
   }
 
   if (message?.type === 'selected:count') {
