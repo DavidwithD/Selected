@@ -154,7 +154,7 @@ document.addEventListener(
 // The read runs on a keypress. Copy in the popup, click back on the page, then
 // press the shortcut. Nothing is read until you ask for it.
 //
-// A blur/focus heuristic came first and failed. docs/plan.md holds why.
+// A blur/focus heuristic came first and failed. docs/decisions/0002 holds why.
 
 // Ctrl+Shift+S, or Command+Shift+S on macOS. The key is fixed.
 const SHORTCUT_KEY = 's';
