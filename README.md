@@ -108,7 +108,8 @@ labels the box under it.
 - **Record only on these sites** — it records nowhere but the hosts you list.
   An empty list records nothing, and saving one says so.
 
-One host per line, and a host also covers its subdomains. Both lists are kept,
+One host per line, and a host also covers its subdomains. Paste a whole URL if
+that is what you have; it is reduced to its host. Both lists are kept,
 so switching modes does not lose the one you typed. The change takes effect on
 **Save settings**.
 

@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  cleanHosts,
   hostRecords,
   isBlocked,
   matchesHost,
@@ -85,4 +86,54 @@ test('matchesHost and isBlocked answer the same question', () => {
   assert.equal(matchesHost('a.example', ['example']), true);
   assert.equal(isBlocked('a.example', ['example']), true);
   assert.equal(matchesHost('a.example', []), false);
+});
+
+// A pasted address bar is the natural thing to type into these boxes, and the
+// lists only ever see location.hostname. An entry that keeps its scheme or its
+// path matches nothing, which on an allow-list is the setting doing nothing.
+test('parseHosts reduces a pasted URL to its host', () => {
+  assert.deepEqual(parseHosts('https://en.wiktionary.org/wiki/hello'), [
+    'en.wiktionary.org',
+  ]);
+  assert.deepEqual(parseHosts('HTTPS://Naver.com'), ['naver.com']);
+  assert.deepEqual(parseHosts('naver.com/'), ['naver.com']);
+  assert.deepEqual(parseHosts('//naver.com'), ['naver.com']);
+});
+
+test('parseHosts drops a port, so localhost:3000 matches localhost', () => {
+  assert.deepEqual(parseHosts('localhost:3000'), ['localhost']);
+});
+
+test('parseHosts drops anything before an @', () => {
+  assert.deepEqual(parseHosts('user:pw@naver.com'), ['naver.com']);
+});
+
+test('one host typed three ways is one entry', () => {
+  assert.deepEqual(parseHosts('naver.com\nhttps://www.naver.com/\nNAVER.COM'), [
+    'naver.com',
+  ]);
+});
+
+test('a pasted URL reaches the allow-list as a host that matches', () => {
+  const settings = {
+    hostMode: 'allow',
+    allowedHosts: parseHosts('https://en.wiktionary.org/wiki/hello'),
+  };
+  assert.equal(hostRecords('en.wiktionary.org', settings), true);
+  assert.equal(hostRecords('example.com', settings), false);
+});
+
+// getSettings reads every stored list through this. A profile that saved URLs
+// before parseHosts learned to strip a scheme repairs itself on the next read,
+// with no migration step.
+test('cleanHosts repairs a list already in storage', () => {
+  assert.deepEqual(
+    cleanHosts(['https://brunch.co.kr/@someone', 'www.NAVER.com/']),
+    ['brunch.co.kr', 'naver.com'],
+  );
+});
+
+test('cleanHosts turns anything that is not a list into an empty one', () => {
+  assert.deepEqual(cleanHosts(undefined), []);
+  assert.deepEqual(cleanHosts('naver.com'), []);
 });

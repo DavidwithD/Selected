@@ -1,7 +1,7 @@
 # Selected — plan
 
-Status: phase 1, clipboard capture and the export field choice are built and
-loadable. `npm test` passes, 46 tests.
+Status: phase 1, clipboard capture, the export field choice and the site
+allow-list are built and loadable. `npm test` passes, 53 tests.
 
 ## Premises
 
@@ -164,6 +164,12 @@ everywhere but `blockedHosts`, `allow` records nowhere but `allowedHosts`.
   block mode. A shortcut is a request; a selection is ambient.
 - The mode takes effect on Save, with the lists it decides between. Both lists
   are stored, so a swap back finds the old one.
+- `parseHosts` reduces a pasted URL to its host. It did not before. The lists
+  match on `location.hostname`, so an entry keeping its scheme, port or path
+  matched nothing. On a blocklist that reads as "records everywhere" and hides.
+  On an allow-list it reads as "records nowhere", which is the setting failing.
+  `getSettings` re-parses both stored lists, so a profile saved before this
+  fixes itself on read.
 - The panel is a select over a textarea, and nothing else. The first version
   had a label over each and a hint under them: three lines of prose saying what
   the select already said. The subdomain rule moved to the README. The empty
