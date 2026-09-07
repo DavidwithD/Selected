@@ -257,10 +257,12 @@ main {
   font-size: 13px;
 }
 
-/* A hidden list has to lose the flex display the grid gives every label, or
-   [hidden] does nothing. */
-.settings-grid label[hidden] {
-  display: none;
+/* The site rule: one select and one list, stacked like every labelled field
+   beside it. The select names what the list means, so nothing else has to. */
+.settings-grid .hosts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 /* The export field choice. Closed it is one control the width of a button. Open
@@ -321,17 +323,19 @@ main {
   font-size: 13px;
 }
 
+/* One field per line, down the page. Every field is a row, so a short one
+   reads as a sentence rather than a stack of three words. */
 .settings-grid {
   display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
-  padding: 12px 0 4px;
+  flex-direction: column;
   align-items: flex-start;
+  gap: 14px;
+  padding: 12px 0 4px;
 }
 
 .settings-grid label {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 6px;
   font-size: 13px;
 }
@@ -353,18 +357,6 @@ main {
   border-radius: 6px;
   padding: 6px 8px;
   resize: vertical;
-}
-
-.row-inline {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.hint {
-  color: var(--muted);
-  font-size: 12px;
-  max-width: 320px;
 }
 
 .settings-grid kbd {

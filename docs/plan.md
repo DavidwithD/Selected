@@ -74,7 +74,7 @@ Manager page:
 - Bulk: select page, copy selected, delete selected.
 - Download every match as JSON, CSV or TXT, carrying the fields you tick.
 - Clear all.
-- Settings: recording switch, retention days, blocked hosts.
+- Settings: recording switch, retention days, the site list and its mode.
 - Dark mode. `/` focuses the search box.
 
 ## Clipboard capture (done)
@@ -164,6 +164,10 @@ everywhere but `blockedHosts`, `allow` records nowhere but `allowedHosts`.
   block mode. A shortcut is a request; a selection is ambient.
 - The mode takes effect on Save, with the lists it decides between. Both lists
   are stored, so a swap back finds the old one.
+- The panel is a select over a textarea, and nothing else. The first version
+  had a label over each and a hint under them: three lines of prose saying what
+  the select already said. The subdomain rule moved to the README. The empty
+  allow-list is still called out, as the toast on Save.
 
 Open: a page with no content script — the Web Store, `chrome://` pages, the
 built-in PDF viewer — shows the global badge rather than `off`. Those pages

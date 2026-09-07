@@ -100,15 +100,17 @@ Open the page and expand "Settings".
 
 ### Which sites record
 
-One setting, two ways round.
+One select above one list. The select is the whole sentence, so nothing else
+labels the box under it.
 
-- **every site except these** — the default. It records everywhere but the
-  hosts you list. The blocklist stops clipboard capture on those sites too.
-- **only these sites** — it records nowhere but the hosts you list. An empty
-  list records nothing, and saving one says so.
+- **Record on every site except these** — the default. It records everywhere
+  but the hosts you list. This list stops clipboard capture on those sites too.
+- **Record only on these sites** — it records nowhere but the hosts you list.
+  An empty list records nothing, and saving one says so.
 
 One host per line, and a host also covers its subdomains. Both lists are kept,
-so switching modes does not lose the one you typed.
+so switching modes does not lose the one you typed. The change takes effect on
+**Save settings**.
 
 The toolbar badge reads `off` on any page that will not record. A page that
 saves nothing looks the same as a page with nothing worth saving, and the badge

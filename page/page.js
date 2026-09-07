@@ -34,11 +34,10 @@ const ui = {
   pageInfo: el('pageInfo'),
   pageSize: el('pageSize'),
   retention: el('retention'),
+  retentionDays: el('retentionDays'),
   blocked: el('blocked'),
   hostMode: el('hostMode'),
   allowed: el('allowed'),
-  blockedField: el('blockedField'),
-  allowedField: el('allowedField'),
   captureSelection: el('captureSelection'),
   captureClipboard: el('captureClipboard'),
   fieldsSummary: el('fieldsSummary'),
@@ -419,11 +418,24 @@ ui.captureClipboard.addEventListener('change', () => {
   );
 });
 
+/**
+ * Hide the word "days" while the box is empty.
+ *
+ * An empty box keeps everything, and the placeholder reads "forever". Leaving
+ * "days" after it would make the line say "keep selections for forever days".
+ * The stored value is still 0, which is what the service worker reads.
+ */
+function showRetention() {
+  ui.retentionDays.hidden = ui.retention.value.trim() === '';
+}
+
+ui.retention.addEventListener('input', showRetention);
+
 /** Show the list the mode uses. The other one keeps its text for a swap back. */
 function showHostList() {
   const allow = ui.hostMode.value === 'allow';
-  ui.blockedField.hidden = allow;
-  ui.allowedField.hidden = !allow;
+  ui.blocked.hidden = allow;
+  ui.allowed.hidden = !allow;
 }
 
 // The mode takes effect on Save, with the lists it decides between. A switch
@@ -441,7 +453,8 @@ ui.saveSettings.addEventListener('click', async () => {
     allowedHosts,
     hostMode,
   });
-  ui.retention.value = String(days);
+  ui.retention.value = days ? String(days) : '';
+  showRetention();
   ui.blocked.value = blockedHosts.join('\n');
   ui.allowed.value = allowedHosts.join('\n');
   // The service worker drops records that fall outside the new window.
@@ -472,7 +485,10 @@ async function start() {
 
   const settings = await getSettings();
   ui.recording.checked = settings.recording;
-  ui.retention.value = String(settings.retentionDays);
+  ui.retention.value = settings.retentionDays
+    ? String(settings.retentionDays)
+    : '';
+  showRetention();
   ui.blocked.value = settings.blockedHosts.join('\n');
   ui.allowed.value = settings.allowedHosts.join('\n');
   ui.hostMode.value = settings.hostMode;

@@ -81,59 +81,52 @@
     <details id="settings" class="settings">
       <summary>Settings</summary>
       <div class="settings-grid">
+        <!-- An empty box means forever, and the placeholder is what says so.
+             The word "days" hides then, so the line reads as a sentence either
+             way. 0 is still what gets stored. -->
         <label>
           Keep selections for
-          <input type="number" id="retention" min="0" max="3650" step="1" />
-          days
-          <span class="hint">0 keeps everything.</span>
+          <input
+            type="number"
+            id="retention"
+            min="0"
+            max="3650"
+            step="1"
+            placeholder="forever"
+          />
+          <span id="retentionDays">days</span>
         </label>
         <label>
-          Record on
-          <select id="hostMode">
-            <option value="block">every site except these</option>
-            <option value="allow">only these sites</option>
-          </select>
+          <input type="checkbox" id="captureSelection" />
+          Save what I select
         </label>
-        <!-- Both lists are stored. Switching the mode hides one and shows the
+        <label>
+          <input type="checkbox" id="captureClipboard" />
+          Save what I copy, on
+          <kbd id="clipboardModifier">Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>
+        </label>
+        <!-- The select is the whole sentence, so neither control needs a label
+             over it. Both lists are stored: the mode hides one and shows the
              other, so the list you typed survives a change of mind. -->
-        <label id="blockedField">
-          Never record on these sites
+        <div class="hosts">
+          <select id="hostMode" aria-label="Which sites record">
+            <option value="block">Record on every site except these</option>
+            <option value="allow">Record only on these sites</option>
+          </select>
           <textarea
             id="blocked"
             rows="4"
+            aria-label="Sites never to record on"
             placeholder="mail.google.com&#10;my-bank.example"
           ></textarea>
-          <span class="hint"
-            >One host per line. A host also covers its subdomains. Form fields
-            and incognito windows are never recorded.</span
-          >
-        </label>
-        <label id="allowedField" hidden>
-          Record only on these sites
           <textarea
             id="allowed"
             rows="4"
+            hidden
+            aria-label="The only sites to record on"
             placeholder="en.wiktionary.org&#10;naver.com"
           ></textarea>
-          <span class="hint"
-            >One host per line. A host also covers its subdomains. An empty list
-            records nothing. The toolbar badge reads <code>off</code> on a site
-            that is not listed.</span
-          >
-        </label>
-        <label>
-          <span class="row-inline">
-            <input type="checkbox" id="captureSelection" />
-            Save what I select
-          </span>
-        </label>
-        <label>
-          <span class="row-inline">
-            <input type="checkbox" id="captureClipboard" />
-            Save what I copy, on
-            <kbd id="clipboardModifier">Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>
-          </span>
-        </label>
+        </div>
         <div>
           <button id="saveSettings">Save settings</button>
         </div>
