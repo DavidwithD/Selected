@@ -479,6 +479,23 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
+// New selections arrive while this tab is in the background. Reload the list
+// when the tab or the window gets focus. Filters, page and ticked rows stay.
+let reloading = false;
+async function reloadOnFocus() {
+  if (document.hidden || reloading) return;
+  reloading = true;
+  try {
+    await refreshHosts();
+    await refresh();
+  } finally {
+    reloading = false;
+  }
+}
+
+document.addEventListener('visibilitychange', reloadOnFocus);
+window.addEventListener('focus', reloadOnFocus);
+
 async function start() {
   const { os } = await chrome.runtime.getPlatformInfo();
   if (os === 'mac') ui.clipboardModifier.textContent = 'Command';
