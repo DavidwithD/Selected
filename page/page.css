@@ -257,12 +257,64 @@ main {
   font-size: 13px;
 }
 
-/* The site rule: one select and one list, stacked like every labelled field
-   beside it. The select names what the list means, so nothing else has to. */
-.settings-grid .hosts {
+/* The site list: one row per site, two boxes, and a remove button. */
+.sites table {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.sites th {
+  text-align: left;
+  font-weight: normal;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 0 14px 4px 0;
+}
+
+.sites td {
+  padding: 4px 14px 4px 0;
+  border-top: 1px solid var(--border);
+}
+
+.sites td.box {
+  text-align: center;
+}
+
+.sites td button {
+  padding: 0 7px;
+}
+
+.sites .note {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 6px 0;
+}
+
+.add-site {
   display: flex;
-  flex-direction: column;
   gap: 6px;
+  margin-top: 8px;
+}
+
+.add-site input {
+  min-width: 240px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+
+.sites a {
+  color: var(--accent);
+}
+
+/* Read by screen readers, not shown. */
+.sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
 }
 
 /* The export field choice. Closed it is one control the width of a button. Open
@@ -346,17 +398,6 @@ main {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 5px 8px;
-}
-
-.settings-grid textarea {
-  font: inherit;
-  color: inherit;
-  min-width: 280px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 8px;
-  resize: vertical;
 }
 
 .settings-grid kbd {

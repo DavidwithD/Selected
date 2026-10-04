@@ -1,91 +1,63 @@
 // Watches for text selections and sends them to the service worker.
-// Runs in every frame of every page. What it records depends on the host.
+// Runs in every frame of every page. What it saves depends on the site list.
 
 const MIN_LENGTH = 2;
 const MAX_LENGTH = 20000;
 const DEBOUNCE_MS = 250;
 // Same text selected again inside this window is ignored.
 const REPEAT_WINDOW_MS = 4000;
+const TOAST_MS = 1800;
 
 let recording = true;
-let blocked = false;
-let captureSelection = true;
-let captureClipboard = false;
+let sites = [];
+// The entry for this frame's host, or null when the site is not listed.
+let site = null;
 let timer = null;
 let last = { text: '', at: 0 };
 
-// The lists, as this frame last read them. Kept whole rather than reduced to a
-// boolean, because a change to either one has to be re-decided against the
-// mode, and a change to the mode against both lists.
-let hostMode = 'block';
-let blockedHosts = [];
-let allowedHosts = [];
-
-// Same rule as matchesHost() in lib/settings.js. Repeated here because a
-// content script cannot import a module. background.js decides again with the
-// real rule before anything is written; this copy only saves a message per
-// selection on a page that will not record.
-function hostMatches(hosts) {
+// Same rule as siteFor() in lib/settings.js. Repeated here because a content
+// script cannot import a module. background.js decides again with the real
+// rule before anything is written. This copy only saves a message per
+// selection on a site that does not save.
+function siteHere() {
   const target = location.hostname.toLowerCase();
-  return (hosts || []).some((listed) => {
-    const one = String(listed).toLowerCase();
-    return one && (target === one || target.endsWith(`.${one}`));
-  });
+  if (!target) return null;
+  let best = null;
+  for (const entry of sites) {
+    const one = String(entry?.host || '').toLowerCase();
+    const hit = one && (target === one || target.endsWith(`.${one}`));
+    if (hit && (!best || one.length > best.host.length)) best = entry;
+  }
+  return best;
 }
 
 /**
- * Re-decide this frame's gate, then tell the worker which host it is on.
+ * Re-decide this frame's site, then tell the worker which host it is on.
  *
- * The report is what paints this tab's badge. The worker has no `tabs`
- * permission and cannot read the URL itself. Only the top frame reports, or
+ * The report is what paints this tab's badge. Only the top frame reports, or
  * one page with ten iframes would paint the badge ten times.
  */
 function settle() {
-  blocked =
-    hostMode === 'allow'
-      ? !hostMatches(allowedHosts)
-      : hostMatches(blockedHosts);
+  site = siteHere();
   if (window.top !== window) return;
   chrome.runtime
     .sendMessage({ type: 'selected:host', host: location.hostname })
     .catch(() => {});
 }
 
-chrome.storage.local.get(
-  {
-    recording: true,
-    hostMode: 'block',
-    blockedHosts: [],
-    allowedHosts: [],
-    captureSelection: true,
-    captureClipboard: false,
-  },
-  (state) => {
-    recording = state.recording !== false;
-    hostMode = state.hostMode === 'allow' ? 'allow' : 'block';
-    blockedHosts = state.blockedHosts || [];
-    allowedHosts = state.allowedHosts || [];
-    captureSelection = state.captureSelection !== false;
-    captureClipboard = state.captureClipboard === true;
-    settle();
-  },
-);
+chrome.storage.local.get({ recording: true, sites: [] }, (state) => {
+  recording = state.recording !== false;
+  sites = Array.isArray(state.sites) ? state.sites : [];
+  settle();
+});
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if (changes.recording) recording = changes.recording.newValue !== false;
-  if (changes.hostMode) {
-    hostMode = changes.hostMode.newValue === 'allow' ? 'allow' : 'block';
+  if (changes.sites) {
+    sites = Array.isArray(changes.sites.newValue) ? changes.sites.newValue : [];
   }
-  if (changes.blockedHosts) blockedHosts = changes.blockedHosts.newValue || [];
-  if (changes.allowedHosts) allowedHosts = changes.allowedHosts.newValue || [];
-  if (changes.captureSelection) {
-    captureSelection = changes.captureSelection.newValue !== false;
-  }
-  if (changes.captureClipboard) {
-    captureClipboard = changes.captureClipboard.newValue === true;
-  }
-  settle();
+  if (changes.recording || changes.sites) settle();
 });
 
 // Text in a form field is never saved.
@@ -103,7 +75,7 @@ function currentSelection() {
 }
 
 function capture() {
-  if (!recording || blocked || !captureSelection) return;
+  if (!recording || !site?.select) return;
   const text = currentSelection().trim();
   if (text.length < MIN_LENGTH) return;
   if (text.length > MAX_LENGTH) return;
@@ -144,31 +116,23 @@ document.addEventListener(
   true,
 );
 
-// Clipboard capture, off by default.
-//
-// A content script cannot run inside an extension popup. Chrome forbids one
-// extension from injecting into another extension's pages. A dictionary that
-// draws its popup as a chrome-extension:// iframe inside the page is closed the
-// same way. The clipboard is the only channel to text selected there.
-//
-// The read runs on a keypress. Copy in the popup, click back on the page, then
-// press the shortcut. Nothing is read until you ask for it.
-//
-// A blur/focus heuristic came first and failed. docs/decisions/0002 holds why.
-
-// Ctrl+Shift+S, or Command+Shift+S on macOS. The key is fixed.
-const SHORTCUT_KEY = 's';
-const TOAST_MS = 1800;
+/**
+ * Whether this frame holds the focus itself.
+ *
+ * `hasFocus()` is also true when a child frame has the focus. A dictionary
+ * popup drawn as a `chrome-extension://` iframe is such a child. When it has
+ * the focus, the page's old selection must not answer for it. The shortcut
+ * then reads the clipboard, which holds what was copied in the popup.
+ */
+function holdsFocus() {
+  if (!document.hasFocus()) return false;
+  const tag = document.activeElement?.tagName;
+  return tag !== 'IFRAME' && tag !== 'FRAME';
+}
 
 let toastHost = null;
 let toastBox = null;
 let toastTimer = null;
-
-function isShortcut(event) {
-  if (event.key?.toLowerCase() !== SHORTCUT_KEY) return false;
-  if (!event.shiftKey || event.altKey) return false;
-  return event.ctrlKey || event.metaKey;
-}
 
 /**
  * Show a short message in the corner of the page.
@@ -197,55 +161,21 @@ function toast(message) {
   toastTimer = setTimeout(() => toastHost.remove(), TOAST_MS);
 }
 
-async function readClipboard() {
-  if (!captureClipboard) return toast('Selected: turn on "Save what I copy"');
-  if (!recording) return toast('Selected: paused');
-  // Only the blocklist stops a shortcut, and only in block mode. The allow-list
-  // narrows ambient capture. This press is a request for this text.
-  // background.js applies the same rule before it writes.
-  if (hostMode === 'block' && hostMatches(blockedHosts)) {
-    return toast('Selected: this site is blocked');
+// Chrome handles the shortcut key, so no key listener runs here. The worker
+// asks every frame for its selection. Only the frame that holds the focus and
+// a selection answers. The worker sends toasts to the top frame only.
+chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (message?.type === 'selected:selection') {
+    if (!holdsFocus()) return false;
+    const text = currentSelection().trim();
+    if (!text) return false;
+    respond({ text, url: location.href, title: document.title });
+    return false;
   }
-
-  let text = '';
-  try {
-    text = await navigator.clipboard.readText();
-  } catch {
-    // The frame lost focus, or the page forbids the read.
-    return toast('Selected: could not read the clipboard');
+  if (message?.type === 'selected:toast') {
+    toast(String(message.text || ''));
+    respond({ ok: true });
+    return false;
   }
-
-  text = text.trim();
-  if (text.length < MIN_LENGTH)
-    return toast('Selected: the clipboard is empty');
-  if (text.length > MAX_LENGTH) return toast('Selected: that text is too long');
-
-  chrome.runtime.sendMessage(
-    {
-      type: 'selected:clipboard',
-      text,
-      // For the blocklist check. It is not stored on the record.
-      pageUrl: location.href,
-    },
-    (response) => {
-      // The service worker may be restarting. Ignore the error.
-      void chrome.runtime.lastError;
-      if (response?.saved) toast('Selected: saved');
-      else if (response?.reason === 'duplicate')
-        toast('Selected: already saved');
-      else toast('Selected: not saved');
-    },
-  );
-}
-
-// The listener runs in every frame. A key event reaches only the frame that has
-// focus, so one press sends one message.
-document.addEventListener(
-  'keydown',
-  (event) => {
-    if (!isShortcut(event)) return;
-    event.preventDefault();
-    readClipboard();
-  },
-  true,
-);
+  return false;
+});

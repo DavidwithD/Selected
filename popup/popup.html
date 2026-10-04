@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Selected</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <!-- Hidden on pages the extension cannot run on, such as chrome://. -->
+    <section id="site" class="site" hidden>
+      <div id="host" class="host"></div>
+      <p id="paused" class="note" hidden>Recording is paused.</p>
+      <div id="listed" hidden>
+        <div class="boxes">
+          <span class="label">Save on:</span>
+          <label><input type="checkbox" id="select" /> Select</label>
+          <label><input type="checkbox" id="shortcut" /> Shortcut</label>
+        </div>
+        <button id="remove" class="ghost danger">Remove</button>
+      </div>
+      <div id="unlisted" hidden>
+        <p class="note">Not on your list.</p>
+        <button id="add">Add site</button>
+      </div>
+    </section>
+    <section class="links">
+      <button id="open" class="link">Open saved text</button>
+      <div id="shortcutLine" class="note"></div>
+    </section>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
