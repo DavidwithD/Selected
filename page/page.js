@@ -11,7 +11,7 @@ import {
   listHosts,
 } from '../lib/db.js';
 import { FIELD_LABELS, FORMATS, formatTime, stamp } from '../lib/format.js';
-import { getSettings, setSettings } from '../lib/settings.js';
+import { DAY_MS, getSettings, setSettings } from '../lib/settings.js';
 import { paintShortcut } from '../lib/shortcut.js';
 
 const el = (id) => document.getElementById(id);
@@ -417,7 +417,6 @@ function showRetention() {
 
 ui.retention.addEventListener('input', showRetention);
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 // The value in storage. The box goes back to it when a change is cancelled.
 let savedDays = 0;
 
@@ -468,6 +467,8 @@ function siteBox(site, key) {
   const box = document.createElement('input');
   box.type = 'checkbox';
   box.checked = site[key];
+  box.dataset.host = site.host;
+  box.dataset.key = key;
   box.setAttribute('aria-label', `${key} on ${site.host}`);
   box.addEventListener('change', () => {
     chrome.runtime.sendMessage({
@@ -501,11 +502,27 @@ function siteRow(site) {
   return row;
 }
 
+/**
+ * Rebuild the site table from storage.
+ *
+ * The rebuild replaces every box. A box that had the keyboard focus gets it
+ * back, so Tab and Space keep working after a change.
+ */
 async function paintSites() {
   const { sites } = await getSettings();
+  const focused = ui.siteRows.contains(document.activeElement)
+    ? document.activeElement.dataset
+    : null;
   state.siteCount = sites.length;
   ui.siteRows.replaceChildren(...sites.map(siteRow));
   ui.noSites.hidden = sites.length > 0;
+  if (focused?.host) {
+    const again = [...ui.siteRows.querySelectorAll('input')].find(
+      (box) =>
+        box.dataset.host === focused.host && box.dataset.key === focused.key,
+    );
+    again?.focus();
+  }
 }
 
 ui.addSite.addEventListener('submit', async (event) => {

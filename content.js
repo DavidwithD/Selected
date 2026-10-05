@@ -123,10 +123,20 @@ document.addEventListener(
  * popup drawn as a `chrome-extension://` iframe is such a child. When it has
  * the focus, the page's old selection must not answer for it. The shortcut
  * then reads the clipboard, which holds what was copied in the popup.
+ *
+ * Some popups put their iframe inside a shadow root. `activeElement` then
+ * names the shadow host. The loop follows each shadow root down to the focused
+ * element. `openOrClosedShadowRoot` also opens closed roots.
  */
 function holdsFocus() {
   if (!document.hasFocus()) return false;
-  const tag = document.activeElement?.tagName;
+  let focused = document.activeElement;
+  while (focused) {
+    const inner = chrome.dom.openOrClosedShadowRoot(focused)?.activeElement;
+    if (!inner) break;
+    focused = inner;
+  }
+  const tag = focused?.tagName;
   return tag !== 'IFRAME' && tag !== 'FRAME';
 }
 

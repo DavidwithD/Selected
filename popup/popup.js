@@ -55,13 +55,17 @@ async function start() {
   if (!host) return;
 
   let site = await paint(host);
+  // Repaint on every change to the list or the flag. The change can come from
+  // this popup or from the manager page.
+  chrome.storage.onChanged.addListener(async (changes, area) => {
+    if (area !== 'local' || !(changes.sites || changes.recording)) return;
+    site = await paint(host);
+  });
   el('add').addEventListener('click', async () => {
     await send({ type: 'selected:site', host });
-    site = await paint(host);
   });
   el('remove').addEventListener('click', async () => {
     await send({ type: 'selected:site', host: site.host, remove: true });
-    site = await paint(host);
   });
   for (const box of ['select', 'shortcut']) {
     el(box).addEventListener('change', async () => {

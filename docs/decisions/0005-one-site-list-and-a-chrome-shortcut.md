@@ -48,9 +48,15 @@ When the key is pressed, `background.js` does this:
    toast and saves nothing.
 3. It asks every frame of the tab for a selection. A frame answers only if it
    holds the focus and a selection. A frame whose focused element is an iframe
-   does not answer.
-4. With an answer, it saves the selection with its url and title.
-5. With no answer, it reads the clipboard and saves it as a clipboard record.
+   does not answer. The check follows shadow roots down to the focused element.
+4. With an answer, it checks the answering frame's host against the list. An
+   iframe from an unlisted host saves nothing. The Select box applies the same
+   rule.
+5. It saves the selection with its url and title.
+6. With no answer, it reads the clipboard and saves it as a clipboard record.
+
+Text shorter than two characters saves nothing, and the toast says it is too
+short.
 
 Step 3 covers the dictionary popup from 0002. When the popup's frame has the
 focus, the page's old selection does not answer. The shortcut then reads the

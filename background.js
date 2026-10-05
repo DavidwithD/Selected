@@ -8,6 +8,7 @@ import {
   newestText,
 } from './lib/db.js';
 import {
+  DAY_MS,
   DEFAULTS,
   OLD_KEYS,
   cleanSites,
@@ -16,14 +17,17 @@ import {
   migrateSites,
   siteFor,
 } from './lib/settings.js';
-import { MAX_LENGTH, shouldSaveOnShortcut } from './lib/clipboard.js';
+import {
+  MAX_LENGTH,
+  MIN_LENGTH,
+  shouldSaveOnShortcut,
+} from './lib/clipboard.js';
+import { COMMAND } from './lib/shortcut.js';
 
 const PAGE_URL = 'page/page.html';
 const OFFSCREEN_URL = 'offscreen/offscreen.html';
-const SHORTCUT = 'save';
 const CLEANUP_ALARM = 'selected:cleanup';
 const CLEANUP_EVERY_MINUTES = 6 * 60;
-const DAY_MS = 24 * 60 * 60 * 1000;
 const FLASH_MS = 2000;
 const MARK_COLOR = '#2e9d5b';
 const OFF_COLOR = '#8a8a8a';
@@ -85,8 +89,8 @@ function scheduleCleanup() {
 /**
  * Write the site list once from the old settings, then drop the old keys.
  *
- * getSettings reads the old keys too. This step means the content script,
- * which reads `sites` alone, sees the same list.
+ * getSettings and the content script read `sites` alone. They see the old
+ * list only after this step has written it.
  */
 async function migrate() {
   const stored = await chrome.storage.local.get(null);
@@ -119,10 +123,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === CLEANUP_ALARM) runCleanup();
 });
 
+// A new retention value is not cleaned up here. The page sends
+// `selected:cleanup` after it writes the value, and shows the count it gets
+// back. A second cleanup here would race it and take that count.
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
   if (changes.recording) paintBadge();
-  if (changes.retentionDays) runCleanup();
 });
 
 // Open the manager page, or focus it if it is already open.
@@ -142,13 +148,28 @@ async function openPage() {
   }
 }
 
+let siteWrites = Promise.resolve();
+
 /**
  * Add, change or remove one site. This is the only code that writes `sites`.
+ *
+ * Each change waits for the one before it. A change reads the list and writes
+ * it back. Two changes that both read before either writes would each save
+ * their own copy, and the second copy would drop the first change.
+ */
+function updateSite(change) {
+  const run = siteWrites.then(() => writeSite(change));
+  siteWrites = run.catch(() => {});
+  return run;
+}
+
+/**
+ * Apply one site change to the stored list.
  *
  * A host typed as a URL is reduced to its host first. Adding a host that is
  * already listed changes its boxes.
  */
-async function updateSite({ host, select, shortcut, remove }) {
+async function writeSite({ host, select, shortcut, remove }) {
   const [entry] = cleanSites([{ host }]);
   if (!entry) return { ok: false, reason: 'no host' };
   const { sites } = await getSettings();
@@ -229,11 +250,18 @@ async function selectionIn(tabId) {
   }
 }
 
+// The pending badge reset for each tab that shows a mark.
+const flashTimers = new Map();
+
 /**
  * Tell the user what a press did.
  *
  * The toast needs the content script. A page without one (`chrome://`, the
  * PDF viewer) gets a mark on the badge for two seconds instead.
+ *
+ * The reset clears the tab's own badge text. The tab then shows the global
+ * text, which paintBadge keeps current. A second press restarts the two
+ * seconds.
  */
 async function tell(tabId, text, ok) {
   try {
@@ -243,11 +271,15 @@ async function tell(tabId, text, ok) {
       { frameId: 0 },
     );
   } catch {
-    const before = await chrome.action.getBadgeText({ tabId });
+    clearTimeout(flashTimers.get(tabId));
     await chrome.action.setBadgeText({ tabId, text: ok ? '✓' : '×' });
-    setTimeout(() => {
-      chrome.action.setBadgeText({ tabId, text: before }).catch(() => {});
-    }, FLASH_MS);
+    flashTimers.set(
+      tabId,
+      setTimeout(() => {
+        flashTimers.delete(tabId);
+        chrome.action.setBadgeText({ tabId, text: null }).catch(() => {});
+      }, FLASH_MS),
+    );
   }
 }
 
@@ -257,6 +289,9 @@ async function tell(tabId, text, ok) {
  * Pressing the key grants `activeTab`, so `tab.url` is readable here. The
  * press saves the focused frame's selection. With no selection it saves the
  * clipboard. Both need the site to be listed with its Shortcut box ticked.
+ *
+ * A selection in an iframe from another host needs that host listed too. The
+ * Select box works the same way, because handleSave checks the frame's URL.
  */
 async function onShortcut(tab) {
   if (!tab?.id || tab.incognito) return;
@@ -279,6 +314,15 @@ async function onShortcut(tab) {
   const selection = await selectionIn(tab.id);
   let record;
   if (selection) {
+    const frameHost = hostOfUrl(selection.url);
+    const frameSite = siteFor(frameHost, settings.sites);
+    if (!frameSite?.shortcut) {
+      return tell(
+        tab.id,
+        `Selected: ${frameHost || 'this frame'} is not on your list`,
+        false,
+      );
+    }
     record = {
       text: selection.text,
       url: selection.url,
@@ -296,6 +340,11 @@ async function onShortcut(tab) {
     record = { text, url: '', title: '', source: 'clipboard' };
   }
 
+  // shouldSaveOnShortcut answers false for all three cases. The two length
+  // checks run first, so its false below means a duplicate.
+  if (record.text.length < MIN_LENGTH) {
+    return tell(tab.id, 'Selected: that text is too short', false);
+  }
   if (record.text.length > MAX_LENGTH) {
     return tell(tab.id, 'Selected: that text is too long', false);
   }
@@ -307,7 +356,7 @@ async function onShortcut(tab) {
 }
 
 chrome.commands.onCommand.addListener((command, tab) => {
-  if (command !== SHORTCUT) return;
+  if (command !== COMMAND) return;
   onShortcut(tab).catch((error) => {
     console.error('Selected: the shortcut failed', error);
   });
@@ -347,18 +396,24 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   }
 
   if (message?.type === 'selected:open') {
-    openPage().then(() => respond({ ok: true }));
+    openPage()
+      .then(() => respond({ ok: true }))
+      .catch((error) => respond({ ok: false, error: String(error) }));
     return true;
   }
 
   if (message?.type === 'selected:count') {
-    countAll().then((count) => respond({ count }));
+    countAll()
+      .then((count) => respond({ count }))
+      .catch((error) => respond({ count: 0, error: String(error) }));
     return true;
   }
 
   // The page asks for a cleanup after the retention setting changes.
   if (message?.type === 'selected:cleanup') {
-    runCleanup().then((deleted) => respond({ deleted }));
+    runCleanup()
+      .then((deleted) => respond({ deleted }))
+      .catch((error) => respond({ deleted: 0, error: String(error) }));
     return true;
   }
 

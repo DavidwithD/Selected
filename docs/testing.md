@@ -38,6 +38,16 @@ the reload.
 11. Copy one row, and a selection of rows.
 12. Turn recording off. The icon shows `off`, and neither selection nor the
     shortcut saves.
+13. Copy one character and press the shortcut. A toast says the text is too
+    short. Nothing is saved.
+14. On a listed site, select text in an iframe from an unlisted host. Press the
+    shortcut. A toast names that host. Nothing is saved.
+15. On the manager page, tick both boxes of one site quickly. Both stay ticked
+    after a reload of the page.
+16. Press the shortcut twice on a `chrome://` page. The mark goes away after two
+    seconds and the badge matches the recording state.
+17. Lower the retention window so records go. The toast count matches the
+    number the page asked about.
 
 ## Reading the storage
 

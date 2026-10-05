@@ -25,7 +25,7 @@ The shortcut takes another path.
 1. Chrome catches the key and calls `chrome.commands.onCommand` in
    `background.js`.
 2. The service worker asks the tab's frames for a selection. The frame that
-   holds the focus and a selection answers.
+   holds the focus and a selection answers. Its host must be on the list too.
 3. With no answer, the service worker reads the clipboard through
    `offscreen/offscreen.html`.
 4. The service worker writes the record, then asks the top frame to show a

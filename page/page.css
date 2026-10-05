@@ -308,7 +308,7 @@ main {
   color: var(--accent);
 }
 
-/* Read by screen readers, not shown. */
+/* Hidden on screen. Screen readers still read it. */
 .sr {
   position: absolute;
   width: 1px;

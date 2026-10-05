@@ -125,7 +125,7 @@ test('cleanSites drops an entry with no host', () => {
   assert.deepEqual(cleanSites([site(''), { select: true }, null]), []);
 });
 
-// A half-written entry saves rather than going silent.
+// A half-written entry still saves.
 test('cleanSites reads a missing box as ticked', () => {
   assert.deepEqual(cleanSites([{ host: 'naver.com' }]), [site('naver.com')]);
 });
