@@ -83,7 +83,8 @@
       <div class="settings-grid">
         <!-- An empty box means forever, and the placeholder is what says so.
              The word "days" hides then, so the line reads as a sentence either
-             way. 0 is still what gets stored. -->
+             way. 0 is still what gets stored. The value applies on Enter or
+             when the box loses focus. -->
         <label>
           Keep selections for
           <input
@@ -96,39 +97,34 @@
           />
           <span id="retentionDays">days</span>
         </label>
-        <label>
-          <input type="checkbox" id="captureSelection" />
-          Save what I select
-        </label>
-        <label>
-          <input type="checkbox" id="captureClipboard" />
-          Save what I copy, on
-          <kbd id="clipboardModifier">Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>
-        </label>
-        <!-- The select is the whole sentence, so neither control needs a label
-             over it. Both lists are stored: the mode hides one and shows the
-             other, so the list you typed survives a change of mind. -->
-        <div class="hosts">
-          <select id="hostMode" aria-label="Which sites record">
-            <option value="block">Record on every site except these</option>
-            <option value="allow">Record only on these sites</option>
-          </select>
-          <textarea
-            id="blocked"
-            rows="4"
-            aria-label="Sites never to record on"
-            placeholder="mail.google.com&#10;my-bank.example"
-          ></textarea>
-          <textarea
-            id="allowed"
-            rows="4"
-            hidden
-            aria-label="The only sites to record on"
-            placeholder="en.wiktionary.org&#10;naver.com"
-          ></textarea>
-        </div>
-        <div>
-          <button id="saveSettings">Save settings</button>
+        <!-- Only listed sites save anything. A box or a ✕ takes effect on
+             click. The toolbar popup writes the same list. -->
+        <div class="sites">
+          <table>
+            <thead>
+              <tr>
+                <th>Site</th>
+                <th>Save on select</th>
+                <th>Save on shortcut</th>
+                <th><span class="sr">Remove</span></th>
+              </tr>
+            </thead>
+            <tbody id="siteRows"></tbody>
+          </table>
+          <p id="noSites" class="note" hidden>
+            No sites yet. Click the toolbar icon on a page to add it.
+          </p>
+          <form id="addSite" class="add-site">
+            <input
+              type="text"
+              id="newSite"
+              placeholder="paste a site or URL"
+              aria-label="Site to add"
+              autocomplete="off"
+            />
+            <button type="submit">Add</button>
+          </form>
+          <p id="shortcutLine" class="note"></p>
         </div>
       </div>
     </details>

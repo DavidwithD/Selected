@@ -1,16 +1,23 @@
-// Tests for the blocklist rules. Run: npm test
+// Tests for the site list rules. Run: npm test
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   cleanHosts,
-  hostRecords,
-  isBlocked,
+  cleanSites,
   matchesHost,
+  migrateSites,
   parseHosts,
+  siteFor,
 } from '../lib/settings.js';
 
-test('parseHosts cleans the textarea input', () => {
+const site = (host, select = true, shortcut = true) => ({
+  host,
+  select,
+  shortcut,
+});
+
+test('parseHosts cleans the typed input', () => {
   const input = ' Mail.Google.com \n\nwww.my-bank.example\nmail.google.com\n';
   assert.deepEqual(parseHosts(input), ['mail.google.com', 'my-bank.example']);
 });
@@ -19,78 +26,52 @@ test('parseHosts on an empty box gives an empty list', () => {
   assert.deepEqual(parseHosts('   \n  '), []);
 });
 
-test('a blocked host blocks its subdomains', () => {
-  const list = ['my-bank.example'];
-  assert.equal(isBlocked('my-bank.example', list), true);
-  assert.equal(isBlocked('www.my-bank.example', list), true);
-  assert.equal(isBlocked('login.eu.my-bank.example', list), true);
+test('a listed host matches itself and its subdomains', () => {
+  const sites = [site('naver.com')];
+  assert.equal(siteFor('naver.com', sites)?.host, 'naver.com');
+  assert.equal(siteFor('m.naver.com', sites)?.host, 'naver.com');
+  assert.equal(siteFor('a.b.naver.com', sites)?.host, 'naver.com');
 });
 
-test('a blocked host does not block a lookalike', () => {
-  const list = ['bank.example'];
-  assert.equal(isBlocked('notbank.example', list), false);
-  assert.equal(isBlocked('bank.example.com', list), false);
+test('a listed host does not match a lookalike', () => {
+  const sites = [site('naver.com')];
+  assert.equal(siteFor('notnaver.com', sites), null);
+  assert.equal(siteFor('naver.com.evil.example', sites), null);
 });
 
-test('an empty list blocks nothing', () => {
-  assert.equal(isBlocked('a.test', []), false);
-  assert.equal(isBlocked('', ['a.test']), false);
+test('a site not on the list gets no entry', () => {
+  assert.equal(siteFor('example.com', [site('naver.com')]), null);
 });
 
-// The mode decides which list is asked. Both lists use the same subdomain rule.
-const block = (blockedHosts) => ({ hostMode: 'block', blockedHosts });
-const allow = (allowedHosts) => ({ hostMode: 'allow', allowedHosts });
-
-test('block mode records everywhere but the blocklist', () => {
-  const settings = block(['my-bank.example']);
-  assert.equal(hostRecords('example.com', settings), true);
-  assert.equal(hostRecords('my-bank.example', settings), false);
-  assert.equal(hostRecords('login.my-bank.example', settings), false);
+test('an empty list matches nothing', () => {
+  assert.equal(siteFor('naver.com', []), null);
+  assert.equal(siteFor('naver.com', undefined), null);
 });
 
-test('an empty blocklist records everywhere', () => {
-  assert.equal(hostRecords('example.com', block([])), true);
+test('a host with no name matches nothing', () => {
+  assert.equal(siteFor('', [site('naver.com')]), null);
 });
 
-test('allow mode records nowhere but the allow-list', () => {
-  const settings = allow(['en.wiktionary.org']);
-  assert.equal(hostRecords('en.wiktionary.org', settings), true);
-  assert.equal(hostRecords('example.com', settings), false);
+// With both listed, the more specific entry uses its own boxes.
+test('the longest matching entry decides', () => {
+  const sites = [site('naver.com', false, true), site('dict.naver.com', true)];
+  assert.equal(siteFor('dict.naver.com', sites)?.select, true);
+  assert.equal(siteFor('ko.dict.naver.com', sites)?.select, true);
+  assert.equal(siteFor('m.naver.com', sites)?.select, false);
 });
 
-test('an allowed host also allows its subdomains', () => {
-  assert.equal(hostRecords('ko.naver.com', allow(['naver.com'])), true);
+test('the longest entry wins whatever the list order', () => {
+  const sites = [site('dict.naver.com'), site('naver.com')];
+  assert.equal(siteFor('dict.naver.com', sites)?.host, 'dict.naver.com');
 });
 
-test('an allowed host does not allow a lookalike', () => {
-  assert.equal(hostRecords('notnaver.com', allow(['naver.com'])), false);
-});
-
-// The silent setting. It is valid, and the page says so when it is saved.
-test('an empty allow-list records nothing', () => {
-  assert.equal(hostRecords('example.com', allow([])), false);
-});
-
-test('a host with no name records in block mode and not in allow mode', () => {
-  assert.equal(hostRecords('', block(['my-bank.example'])), true);
-  assert.equal(hostRecords('', allow(['naver.com'])), false);
-});
-
-test('an unknown mode is read as block, so a bad value records', () => {
-  const settings = { hostMode: 'nonsense', blockedHosts: ['my-bank.example'] };
-  assert.equal(hostRecords('example.com', settings), true);
-  assert.equal(hostRecords('my-bank.example', settings), false);
-});
-
-test('matchesHost and isBlocked answer the same question', () => {
+test('matchesHost covers subdomains', () => {
   assert.equal(matchesHost('a.example', ['example']), true);
-  assert.equal(isBlocked('a.example', ['example']), true);
   assert.equal(matchesHost('a.example', []), false);
 });
 
-// A pasted address bar is the natural thing to type into these boxes, and the
-// lists only ever see location.hostname. An entry that keeps its scheme or its
-// path matches nothing, which on an allow-list is the setting doing nothing.
+// A pasted address bar is the natural thing to type. The list only ever sees
+// location.hostname, so an entry that keeps its scheme or path matches nothing.
 test('parseHosts reduces a pasted URL to its host', () => {
   assert.deepEqual(parseHosts('https://en.wiktionary.org/wiki/hello'), [
     'en.wiktionary.org',
@@ -114,18 +95,6 @@ test('one host typed three ways is one entry', () => {
   ]);
 });
 
-test('a pasted URL reaches the allow-list as a host that matches', () => {
-  const settings = {
-    hostMode: 'allow',
-    allowedHosts: parseHosts('https://en.wiktionary.org/wiki/hello'),
-  };
-  assert.equal(hostRecords('en.wiktionary.org', settings), true);
-  assert.equal(hostRecords('example.com', settings), false);
-});
-
-// getSettings reads every stored list through this. A profile that saved URLs
-// before parseHosts learned to strip a scheme repairs itself on the next read,
-// with no migration step.
 test('cleanHosts repairs a list already in storage', () => {
   assert.deepEqual(
     cleanHosts(['https://brunch.co.kr/@someone', 'www.NAVER.com/']),
@@ -133,7 +102,73 @@ test('cleanHosts repairs a list already in storage', () => {
   );
 });
 
-test('cleanHosts turns anything that is not a list into an empty one', () => {
+test('cleanHosts turns anything but an array into an empty list', () => {
   assert.deepEqual(cleanHosts(undefined), []);
   assert.deepEqual(cleanHosts('naver.com'), []);
+});
+
+test('cleanSites reduces a pasted URL to its host', () => {
+  assert.deepEqual(cleanSites([site('https://www.Naver.com/search?q=1')]), [
+    site('naver.com'),
+  ]);
+});
+
+test('cleanSites keeps the first entry for a host, sorted by host', () => {
+  const list = [site('naver.com', false), site('b.example'), site('NAVER.com')];
+  assert.deepEqual(cleanSites(list), [
+    site('b.example'),
+    site('naver.com', false),
+  ]);
+});
+
+test('cleanSites drops an entry with no host', () => {
+  assert.deepEqual(cleanSites([site(''), { select: true }, null]), []);
+});
+
+// A half-written entry still saves.
+test('cleanSites reads a missing box as ticked', () => {
+  assert.deepEqual(cleanSites([{ host: 'naver.com' }]), [site('naver.com')]);
+});
+
+test('cleanSites turns anything but an array into an empty list', () => {
+  assert.deepEqual(cleanSites(undefined), []);
+  assert.deepEqual(cleanSites('naver.com'), []);
+});
+
+test('migrateSites keeps a stored site list', () => {
+  const stored = { sites: [site('naver.com', false)], allowedHosts: ['x.com'] };
+  assert.deepEqual(migrateSites(stored), [site('naver.com', false)]);
+});
+
+test('migrateSites turns an old allow-list into sites', () => {
+  const stored = {
+    hostMode: 'allow',
+    allowedHosts: ['naver.com', 'https://en.wiktionary.org/wiki/a'],
+    captureSelection: true,
+    captureClipboard: false,
+  };
+  assert.deepEqual(migrateSites(stored), [
+    site('en.wiktionary.org'),
+    site('naver.com'),
+  ]);
+});
+
+// The typed allow-list is kept from a block-mode profile. The blocklist is not.
+test('migrateSites keeps the allow-list from a block-mode profile', () => {
+  const stored = {
+    hostMode: 'block',
+    blockedHosts: ['my-bank.example'],
+    allowedHosts: ['naver.com'],
+  };
+  assert.deepEqual(migrateSites(stored), [site('naver.com')]);
+});
+
+test('migrateSites carries the old selection switch onto each site', () => {
+  const stored = { allowedHosts: ['naver.com'], captureSelection: false };
+  assert.deepEqual(migrateSites(stored), [site('naver.com', false, true)]);
+});
+
+test('migrateSites on an empty profile gives an empty list', () => {
+  assert.deepEqual(migrateSites({}), []);
+  assert.deepEqual(migrateSites(undefined), []);
 });

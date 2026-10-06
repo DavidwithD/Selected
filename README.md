@@ -1,7 +1,8 @@
 # Selected
 
-A Chrome extension. It saves every text you select, automatically. One page lets
-you browse, filter, copy, export and delete what it saved.
+A Chrome extension. It saves the text you select on the sites you choose. A
+shortcut saves a selection or the clipboard. One page lets you browse, filter,
+copy, export and delete what it saved.
 
 Everything stays on this machine. Nothing is uploaded.
 
@@ -14,7 +15,7 @@ This page is for installing it and driving it. How it is built is
 1. Open `chrome://extensions`.
 2. Turn on Developer mode.
 3. Click "Load unpacked" and pick this folder.
-4. Click the toolbar icon to open the saved text page.
+4. Click the toolbar icon, then **Open saved text**.
 
 Reload the extension from `chrome://extensions` after you change a file. The
 manager page is read from disk every time you open it, but `content.js` and
@@ -25,33 +26,58 @@ loaded after it, so reload the page you are testing on too.
 
 - Text in an `<input>` or a `<textarea>`.
 - Anything from an incognito window. The extension is disabled there.
-- Anything the site lists refuse. See [Which sites record](#which-sites-record).
+- Anything on a site that is not on your list. See [Sites](#sites).
 - A selection shorter than 2 characters or longer than 20000.
 - The same text twice within 4 seconds.
 
 A selection you widen within 4 seconds replaces the narrower one.
 
-## Clipboard capture
+## Sites
 
-Off by default. Turn it on under Settings, "Save what I copy".
+Nothing is saved on a site until you add it. On a page, click the toolbar icon,
+then **Add site**. You can also add one under Settings on the manager page.
+Paste a whole URL if that is what you have. It is reduced to its host.
 
-Some text cannot be selected into this extension at all. A dictionary popup
-drawn as a `chrome-extension://` iframe is one example. The clipboard is the way
-in:
+Each site has two boxes:
 
-1. Select the text in the popup and press Ctrl+C.
-2. Click back on the page.
-3. Press Ctrl+Shift+S. On macOS, Command+Shift+S.
+- **Select** saves what you select there.
+- **Shortcut** lets the shortcut save there.
 
-A message in the corner of the page says what happened. The key is the only
-trigger, and it is fixed — you cannot rebind it yet.
+A site also covers its subdomains. When two entries cover a page, the longer
+one decides. With `naver.com` and `dict.naver.com` both listed,
+`dict.naver.com` uses its own boxes.
+
+The toolbar icon shows a green mark on a listed site. It shows `off` everywhere
+while recording is paused.
+
+## The shortcut
+
+The default is Ctrl+Shift+S, and Command+Shift+S on macOS. Change it at
+`chrome://extensions/shortcuts`. The popup and the manager page show the
+current key, with a link there.
+
+On a listed site with **Shortcut** ticked, the key saves:
+
+- the text you selected, with its page, or
+- the clipboard, when nothing is selected.
+
+A message in the corner of the page says what happened. A second press on the
+same text saves nothing.
+
+The clipboard covers text the extension cannot reach. A dictionary popup drawn
+as a `chrome-extension://` iframe is one example. Copy the text in the popup,
+then press the key.
 
 A clipboard record has no source page. It is stored under the host `clipboard`,
-so the site filter can pick it out, and the list shows a `Clipboard` label in
-place of a link. A second press on the same clipboard saves nothing.
+so the site filter can pick it out. The list shows a `Clipboard` label in place
+of a link.
 
-Why a keypress and not something automatic:
-[0002](docs/decisions/0002-clipboard-capture-on-a-keypress.md).
+If the key does nothing, check two things. Another extension may use it, and
+then Chrome leaves Selected's key empty. macOS may use it too. For example,
+Command+Shift+Y makes a Stickies note, and Chrome never sees it.
+
+Why it works this way:
+[0005](docs/decisions/0005-one-site-list-and-a-chrome-shortcut.md).
 
 ## Download
 
@@ -76,35 +102,12 @@ Unticking every box downloads nothing. The page says to pick one.
 
 Open the page and expand "Settings".
 
-- **Recording** — the switch in the header. It pauses both sources at once.
-- **Save what I select** — on by default. Text you select on a page.
-- **Save what I copy** — off by default. See [Clipboard
-  capture](#clipboard-capture).
+- **Recording** — the switch in the header. It pauses everything at once.
 - **Keep selections for** — default 90 days. Leave the box empty to keep
-  everything. A cleanup runs every 6 hours and on browser start.
-- **Record on** — see below.
-
-The two source switches take effect the moment you click them. Everything else
-waits for **Save settings**.
-
-### Which sites record
-
-One select above one list.
-
-- **Record on every site except these** — the default. It records everywhere
-  but the hosts you list. This list stops clipboard capture on those sites too.
-- **Record only on these sites** — it records nowhere but the hosts you list.
-  An empty list records nothing, and saving one says so.
-
-One host per line, and a host also covers its subdomains. Paste a whole URL if
-that is what you have; it is reduced to its host. Both lists are kept, so
-switching modes does not lose the one you typed.
-
-The toolbar badge reads `off` on any page that will not record, and when both
-source switches are off.
-
-The allow-list does not stop the clipboard shortcut
-([0004](docs/decisions/0004-recording-only-on-listed-sites.md)).
+  everything. A cleanup runs every 6 hours and on browser start. A new value
+  applies when you press Enter or leave the box. If a shorter window would
+  delete records, the page says how many and asks first.
+- **The site list** — see [Sites](#sites). A box or a ✕ takes effect on click.
 
 ## Scripts
 

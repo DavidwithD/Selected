@@ -4,15 +4,11 @@ What is built is in the [README](../README.md). This is what is not.
 
 ## Next
 
-- A "Block this site" button on each row. It adds the host to the list the
-  current mode uses.
+- An "Add this site" button on each row of the saved list.
 - Download only the selected rows, not just every match of the filter.
 - Undo after a delete.
 - A minimum length setting.
 - A keyboard shortcut to open the page.
-- A rebindable clipboard shortcut. `chrome.commands` would do it, but it needs
-  `host_permissions` for `tabs.sendMessage`, because the service worker has no
-  clipboard of its own. That is a wider install prompt for a remappable key.
 
 ## Scale
 
@@ -36,12 +32,12 @@ What is built is in the [README](../README.md). This is what is not.
    skipped too?
 2. **Whitespace.** The text is stored as selected, trimmed only. Newlines and
    indentation are kept. Good for code, noisy for text copied out of a PDF.
-3. **Blocked hosts and old records.** Adding a host to the blocklist stops new
-   captures. It does not delete what that host already saved. Should it?
+3. **Removed sites and old records.** Removing a site stops new saves. It does
+   not delete what that site already saved. Should it?
 4. **PDF files.** Chrome's built-in PDF viewer does not run content scripts.
    Selections there are lost. Accept it, or handle it later?
 5. **Pages with no content script.** The Web Store, `chrome://` pages and the
-   PDF viewer keep the global badge rather than reading `off`. They never
-   recorded anything, so the badge is only cosmetically wrong.
+   PDF viewer cannot show a toast. The shortcut shows `✓` or `×` on the icon
+   for two seconds instead.
 6. **One field set for three formats.** A CSV wanted as a table and a TXT wanted
    for reading may want different sets.

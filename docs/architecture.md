@@ -17,23 +17,37 @@ A selection travels through three processes.
    writes a record.
 
 The content script also keeps a local copy of the site rule. That copy only
-saves a message per selection on a page that will not record. The service worker
+saves a message per selection on a site that does not save. The service worker
 decides again, with the real rule, before anything is written.
+
+The shortcut takes another path.
+
+1. Chrome catches the key and calls `chrome.commands.onCommand` in
+   `background.js`.
+2. The service worker asks the tab's frames for a selection. The frame that
+   holds the focus and a selection answers. Its host must be on the list too.
+3. With no answer, the service worker reads the clipboard through
+   `offscreen/offscreen.html`.
+4. The service worker writes the record, then asks the top frame to show a
+   toast.
 
 ## Files
 
-| File                     | Job                                            |
-| ------------------------ | ---------------------------------------------- |
-| `manifest.json`          | MV3 manifest. Content script on `<all_urls>`.  |
-| `content.js`             | Reads the selection, debounces, sends it.      |
-| `background.js`          | Writes records. Badge, icon click, cleanup.    |
-| `lib/db.js`              | IndexedDB open, add, query, delete, retention. |
-| `lib/settings.js`        | Defaults, the site rules, host parsing.        |
-| `lib/clipboard.js`       | The clipboard dedupe rule.                     |
-| `lib/format.js`          | JSON, CSV and TXT builders. The field list.    |
-| `page/page.html/css/js`  | Manager page.                                  |
-| `scripts/make-icons.cjs` | Draws the three PNG icons.                     |
-| `test/*.test.js`         | The suite. `npm test`.                         |
+| File                          | Job                                                     |
+| ----------------------------- | ------------------------------------------------------- |
+| `manifest.json`               | MV3 manifest. Content script on `<all_urls>`.           |
+| `content.js`                  | Reads the selection, debounces, sends it.               |
+| `background.js`               | Writes records and `sites`. Shortcut, badge, cleanup.   |
+| `lib/db.js`                   | IndexedDB open, add, query, delete, retention.          |
+| `lib/settings.js`             | Defaults, the site list rules, host parsing, migration. |
+| `lib/clipboard.js`            | The shortcut dedupe rule.                               |
+| `lib/shortcut.js`             | Reads the current key for the popup and page.           |
+| `lib/format.js`               | JSON, CSV and TXT builders. The field list.             |
+| `page/page.html/css/js`       | Manager page.                                           |
+| `popup/popup.html/css/js`     | Toolbar popup. The current site's boxes.                |
+| `offscreen/offscreen.html/js` | Hidden page that reads the clipboard.                   |
+| `scripts/make-icons.cjs`      | Draws the three PNG icons.                              |
+| `test/*.test.js`              | The suite. `npm test`.                                  |
 
 ## The record
 
@@ -43,9 +57,8 @@ decides again, with the real rule, before anything is written.
 }
 ```
 
-`source` is `selection` or `clipboard`, and each source has its own switch. A
-clipboard record carries no `url` and no `title`, and its `host` is the literal
-string `clipboard`.
+`source` is `selection` or `clipboard`. A clipboard record carries no `url` and
+no `title`. Its `host` is the literal string `clipboard`.
 
 `id` never leaves the database. It is an autoincrement key, it means nothing in
 another profile, and no export offers it.
@@ -71,11 +84,13 @@ These are assumptions the code is built on. Correct any that stop being true.
    trigger on `selectionchange`, so a slow drag does not save partial text.
 5. Widening a selection updates the previous record instead of adding a second
    one. The window is 4 seconds and the same URL.
-6. The manager page is a full tab, opened by the toolbar icon. There is no
-   popup, so the switches live on that page.
+6. The toolbar icon opens a popup with the current site's boxes. The manager
+   page is a full tab, opened from the popup. It holds the full site list.
 7. Data stays on this machine. Nothing is sent anywhere, and there is no sync.
 8. A content script cannot reach another extension's pages. Chrome forbids the
    injection. The clipboard is the only channel to that text.
-9. The extension asks for no `tabs` permission, so the service worker cannot
-   read a tab's URL. Anything it needs about a page comes from the content
-   script.
+9. The extension asks for no `tabs` permission. The service worker reads a
+   tab's URL only after a click on the icon or a press of the shortcut. Both
+   grant `activeTab`. Anything else it needs about a page comes from the
+   content script.
+10. Chrome owns the shortcut key. The content script has no key listener.

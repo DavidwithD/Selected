@@ -6,26 +6,48 @@
 run outside a browser, so nothing opens.
 
 Covered: add, search, host and date filters, paging, the supersede rule, delete,
-clear, retention, the site rules, host parsing, and the three export builders.
+clear, retention, the site list rules, migration, host parsing, and the three
+export builders.
 
 ## What the suite cannot reach
 
-`content.js`, `background.js` and `page/` all need a browser. None of them is
+`content.js`, `background.js`, `page/`, `popup/` and `offscreen/` all need a
+browser. None of them is
 covered. A change to any of them is unverified until someone drives it.
 
 Run this list by hand after such a change. Reload the extension first, then
 reload each page you test on — content scripts only attach to pages loaded after
 the reload.
 
-1. Select text on two different sites. Open the page. Both appear.
-2. Select text inside a text box. Nothing is saved.
-3. Add a host to the blocklist, reload that page, select text. Nothing is saved.
-4. Switch to "Record only on these sites", list one host, save. Selecting on
-   another site saves nothing, and the badge reads `off` there.
-5. Search, filter by site, filter by date. Delete one row. Delete a selection.
-6. Download JSON, CSV and TXT. Untick some fields and download again.
-7. Copy one row, and a selection of rows.
-8. Turn recording off. The badge shows `off` and nothing is saved.
+1. Select text on a site that is not listed. Nothing is saved, and the icon
+   shows no mark.
+2. Click the icon, then **Add site**. The icon shows a green mark. Select text.
+   It is saved.
+3. Select text inside a text box. Nothing is saved.
+4. Untick **Select** for the site. Select text. Nothing is saved. Press the
+   shortcut. The selection is saved with its page.
+5. Copy text in another app. Press the shortcut with nothing selected. It is
+   saved as `Clipboard`.
+6. Copy text in a dictionary popup. Press the shortcut while the popup has the
+   focus. The copied text is saved, not an old page selection.
+7. Press the shortcut on a site that is not listed. A toast says so.
+8. Change the key at `chrome://extensions/shortcuts`. The new key works. The
+   popup shows it.
+9. Search, filter by site, filter by date. Delete one row. Delete a selection.
+10. Download JSON, CSV and TXT. Untick some fields and download again.
+11. Copy one row, and a selection of rows.
+12. Turn recording off. The icon shows `off`, and neither selection nor the
+    shortcut saves.
+13. Copy one character and press the shortcut. A toast says the text is too
+    short. Nothing is saved.
+14. On a listed site, select text in an iframe from an unlisted host. Press the
+    shortcut. A toast names that host. Nothing is saved.
+15. On the manager page, tick both boxes of one site quickly. Both stay ticked
+    after a reload of the page.
+16. Press the shortcut twice on a `chrome://` page. The mark goes away after two
+    seconds and the badge matches the recording state.
+17. Lower the retention window so records go. The toast count matches the
+    number the page asked about.
 
 ## Reading the storage
 

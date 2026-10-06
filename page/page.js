@@ -7,10 +7,12 @@ import {
   deleteIds,
   clearAll,
   countAll,
+  countOlderThan,
   listHosts,
 } from '../lib/db.js';
 import { FIELD_LABELS, FORMATS, formatTime, stamp } from '../lib/format.js';
-import { getSettings, setSettings, parseHosts } from '../lib/settings.js';
+import { DAY_MS, getSettings, setSettings } from '../lib/settings.js';
+import { paintShortcut } from '../lib/shortcut.js';
 
 const el = (id) => document.getElementById(id);
 const ui = {
@@ -35,14 +37,12 @@ const ui = {
   pageSize: el('pageSize'),
   retention: el('retention'),
   retentionDays: el('retentionDays'),
-  blocked: el('blocked'),
-  hostMode: el('hostMode'),
-  allowed: el('allowed'),
-  captureSelection: el('captureSelection'),
-  captureClipboard: el('captureClipboard'),
+  siteRows: el('siteRows'),
+  noSites: el('noSites'),
+  addSite: el('addSite'),
+  newSite: el('newSite'),
+  shortcutLine: el('shortcutLine'),
   fieldsSummary: el('fieldsSummary'),
-  clipboardModifier: el('clipboardModifier'),
-  saveSettings: el('saveSettings'),
   toast: el('toast'),
 };
 
@@ -52,6 +52,7 @@ const state = {
   total: 0,
   rows: [],
   picked: new Set(),
+  siteCount: 0,
 };
 
 let toastTimer = null;
@@ -220,10 +221,14 @@ async function refresh() {
 
   ui.list.replaceChildren(...rows.map(buildRow));
   ui.empty.hidden = rows.length > 0;
-  ui.empty.textContent =
-    total === 0 && (f.text || f.host || f.from || f.to)
-      ? 'No selection matches these filters.'
-      : 'Nothing saved yet. Select some text on any page.';
+  if (total === 0 && (f.text || f.host || f.from || f.to)) {
+    ui.empty.textContent = 'No selection matches these filters.';
+  } else if (state.siteCount === 0) {
+    ui.empty.textContent =
+      'Nothing saved yet. Click the toolbar icon on a page to add its site.';
+  } else {
+    ui.empty.textContent = 'Nothing saved yet. Select text on a listed site.';
+  }
 
   const all = await countAll();
   ui.count.textContent = `${all} saved`;
@@ -399,25 +404,6 @@ ui.recording.addEventListener('change', () => {
   toast(ui.recording.checked ? 'Recording' : 'Paused');
 });
 
-// A capture switch takes effect when it is clicked, not on Save.
-ui.captureSelection.addEventListener('change', () => {
-  setSettings({ captureSelection: ui.captureSelection.checked });
-  toast(
-    ui.captureSelection.checked
-      ? 'Saving what you select'
-      : 'Selection capture off',
-  );
-});
-
-ui.captureClipboard.addEventListener('change', () => {
-  setSettings({ captureClipboard: ui.captureClipboard.checked });
-  toast(
-    ui.captureClipboard.checked
-      ? 'Saving what you copy'
-      : 'Clipboard capture off',
-  );
-});
-
 /**
  * Hide the word "days" while the box is empty.
  *
@@ -431,45 +417,129 @@ function showRetention() {
 
 ui.retention.addEventListener('input', showRetention);
 
-/** Show the list the mode uses. The other one keeps its text for a swap back. */
-function showHostList() {
-  const allow = ui.hostMode.value === 'allow';
-  ui.blocked.hidden = allow;
-  ui.allowed.hidden = !allow;
-}
+// The value in storage. The box goes back to it when a change is cancelled.
+let savedDays = 0;
 
-// The mode takes effect on Save, with the lists it decides between. A switch
-// that took effect on click would apply a list nobody had reviewed.
-ui.hostMode.addEventListener('change', showHostList);
-
-ui.saveSettings.addEventListener('click', async () => {
-  const days = Math.max(0, Math.min(3650, Number(ui.retention.value) || 0));
-  const blockedHosts = parseHosts(ui.blocked.value);
-  const allowedHosts = parseHosts(ui.allowed.value);
-  const hostMode = ui.hostMode.value === 'allow' ? 'allow' : 'block';
-  await setSettings({
-    retentionDays: days,
-    blockedHosts,
-    allowedHosts,
-    hostMode,
-  });
+function showDays(days) {
   ui.retention.value = days ? String(days) : '';
   showRetention();
-  ui.blocked.value = blockedHosts.join('\n');
-  ui.allowed.value = allowedHosts.join('\n');
+}
+
+/**
+ * Apply the retention box.
+ *
+ * `change` fires on Enter or when the box loses focus. It does not fire on
+ * each key, so typing "30" never applies "3" on the way.
+ *
+ * A shorter window deletes records at once. When it would delete any, the
+ * page says how many and asks first. A longer window, or forever, deletes
+ * nothing and applies without asking.
+ */
+ui.retention.addEventListener('change', async () => {
+  const days = Math.max(0, Math.min(3650, Number(ui.retention.value) || 0));
+  if (days === savedDays) return showDays(days);
+  if (days) {
+    const doomed = await countOlderThan(Date.now() - days * DAY_MS);
+    const ask = `This deletes ${doomed} saved record${doomed === 1 ? '' : 's'} older than ${days} day${days === 1 ? '' : 's'}. Continue?`;
+    if (doomed > 0 && !confirm(ask)) return showDays(savedDays);
+  }
+  await setSettings({ retentionDays: days });
+  savedDays = days;
+  showDays(days);
   // The service worker drops records that fall outside the new window.
   const result = await chrome.runtime.sendMessage({ type: 'selected:cleanup' });
   const dropped = result?.deleted || 0;
-  // An allow-list with nothing on it records nothing anywhere. It is a valid
-  // setting and a silent one, so saving it says so.
-  const empty = hostMode === 'allow' && allowedHosts.length === 0;
-  if (empty) toast('Saved. An empty allow-list records nothing.');
-  else
-    toast(
-      dropped ? `Saved. Dropped ${dropped} old records.` : 'Settings saved',
-    );
+  const kept = days
+    ? `Keeping ${days} day${days === 1 ? '' : 's'}`
+    : 'Keeping everything';
+  toast(dropped ? `${kept}. Deleted ${dropped}.` : kept);
   await refreshHosts();
   await refresh();
+});
+
+// The site list. Every change goes to the service worker, which is the only
+// writer of `sites`. The table repaints from storage, so a change made in the
+// popup shows here too.
+
+function siteBox(site, key) {
+  const cell = document.createElement('td');
+  cell.className = 'box';
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = site[key];
+  box.dataset.host = site.host;
+  box.dataset.key = key;
+  box.setAttribute('aria-label', `${key} on ${site.host}`);
+  box.addEventListener('change', () => {
+    chrome.runtime.sendMessage({
+      type: 'selected:site',
+      host: site.host,
+      [key]: box.checked,
+    });
+  });
+  cell.append(box);
+  return cell;
+}
+
+function siteRow(site) {
+  const row = document.createElement('tr');
+  const name = document.createElement('td');
+  name.textContent = site.host;
+  const end = document.createElement('td');
+  const remove = document.createElement('button');
+  remove.className = 'ghost danger';
+  remove.textContent = '✕';
+  remove.title = `Remove ${site.host}`;
+  remove.addEventListener('click', () => {
+    chrome.runtime.sendMessage({
+      type: 'selected:site',
+      host: site.host,
+      remove: true,
+    });
+  });
+  end.append(remove);
+  row.append(name, siteBox(site, 'select'), siteBox(site, 'shortcut'), end);
+  return row;
+}
+
+/**
+ * Rebuild the site table from storage.
+ *
+ * The rebuild replaces every box. A box that had the keyboard focus gets it
+ * back, so Tab and Space keep working after a change.
+ */
+async function paintSites() {
+  const { sites } = await getSettings();
+  const focused = ui.siteRows.contains(document.activeElement)
+    ? document.activeElement.dataset
+    : null;
+  state.siteCount = sites.length;
+  ui.siteRows.replaceChildren(...sites.map(siteRow));
+  ui.noSites.hidden = sites.length > 0;
+  if (focused?.host) {
+    const again = [...ui.siteRows.querySelectorAll('input')].find(
+      (box) =>
+        box.dataset.host === focused.host && box.dataset.key === focused.key,
+    );
+    again?.focus();
+  }
+}
+
+ui.addSite.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const host = ui.newSite.value.trim();
+  if (!host) return;
+  const result = await chrome.runtime.sendMessage({
+    type: 'selected:site',
+    host,
+  });
+  if (!result?.ok) return toast('That is not a site');
+  ui.newSite.value = '';
+  toast(`Added ${result.host}`);
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.sites) paintSites();
 });
 
 document.addEventListener('keydown', (event) => {
@@ -497,21 +567,12 @@ document.addEventListener('visibilitychange', reloadOnFocus);
 window.addEventListener('focus', reloadOnFocus);
 
 async function start() {
-  const { os } = await chrome.runtime.getPlatformInfo();
-  if (os === 'mac') ui.clipboardModifier.textContent = 'Command';
-
   const settings = await getSettings();
   ui.recording.checked = settings.recording;
-  ui.retention.value = settings.retentionDays
-    ? String(settings.retentionDays)
-    : '';
-  showRetention();
-  ui.blocked.value = settings.blockedHosts.join('\n');
-  ui.allowed.value = settings.allowedHosts.join('\n');
-  ui.hostMode.value = settings.hostMode;
-  showHostList();
-  ui.captureSelection.checked = settings.captureSelection;
-  ui.captureClipboard.checked = settings.captureClipboard;
+  savedDays = settings.retentionDays;
+  showDays(savedDays);
+  await paintSites();
+  paintShortcut(ui.shortcutLine);
   // null is the default: every field. A stored list ticks exactly what it holds.
   if (settings.exportFields) {
     const kept = new Set(settings.exportFields);

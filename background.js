@@ -1,5 +1,5 @@
 // Service worker. Single writer to the database.
-// Owns the toolbar icon, the badge and the retention cleanup.
+// Owns the shortcut, the badge, the site list writes and the retention cleanup.
 
 import {
   addSelection,
@@ -8,54 +8,65 @@ import {
   newestText,
 } from './lib/db.js';
 import {
+  DAY_MS,
   DEFAULTS,
+  OLD_KEYS,
+  cleanSites,
   getSettings,
   hostOfUrl,
-  hostRecords,
-  isBlocked,
+  migrateSites,
+  siteFor,
 } from './lib/settings.js';
-import { shouldSaveClipboard } from './lib/clipboard.js';
+import {
+  MAX_LENGTH,
+  MIN_LENGTH,
+  shouldSaveOnShortcut,
+} from './lib/clipboard.js';
+import { COMMAND } from './lib/shortcut.js';
 
 const PAGE_URL = 'page/page.html';
+const OFFSCREEN_URL = 'offscreen/offscreen.html';
 const CLEANUP_ALARM = 'selected:cleanup';
 const CLEANUP_EVERY_MINUTES = 6 * 60;
-const DAY_MS = 24 * 60 * 60 * 1000;
+const FLASH_MS = 2000;
+const MARK_COLOR = '#2e9d5b';
+const OFF_COLOR = '#8a8a8a';
 
-/** Both sources off, or recording paused. Nothing records anywhere. */
-const isLive = (settings) =>
-  settings.recording &&
-  (settings.captureSelection || settings.captureClipboard);
-
-// The badge reads 'off' when nothing can be saved: paused, or both sources off.
-// This is the default every tab starts from. A tab whose host is refused paints
-// over it in paintTab below.
+// The badge reads 'off' everywhere while recording is paused. This is the
+// default every tab starts from. A tab on a listed site paints over it in
+// paintTab below.
 async function paintBadge() {
-  const live = isLive(await getSettings());
-  await chrome.action.setBadgeText({ text: live ? '' : 'off' });
-  await chrome.action.setBadgeBackgroundColor({ color: '#8a8a8a' });
+  const { recording } = await getSettings();
+  await chrome.action.setBadgeText({ text: recording ? '' : 'off' });
+  await chrome.action.setBadgeBackgroundColor({ color: OFF_COLOR });
   await chrome.action.setTitle({
-    title: live ? 'Selected: open saved text' : 'Selected: paused',
+    title: recording ? 'Selected' : 'Selected: paused',
   });
 }
 
 /**
  * Paint one tab's badge from the host its content script reported.
  *
- * An allow-list saves nothing on most pages, and a page that saves nothing
- * looks exactly like a page with nothing worth saving. The badge is what makes
- * the two different, so it is part of the allow-list rather than a nicety.
- *
- * The host comes from the content script because the extension has no `tabs`
- * permission and cannot read a tab's URL. Asking for one would widen the
- * install prompt for a badge.
+ * A listed site gets a mark. Any other site gets nothing, because most sites
+ * are not listed and a mark on all of them would say nothing.
  */
 async function paintTab(tabId, host) {
-  const settings = await getSettings();
-  const records = isLive(settings) && hostRecords(host, settings);
-  await chrome.action.setBadgeText({ tabId, text: records ? '' : 'off' });
-  let title = 'Selected: open saved text';
-  if (!isLive(settings)) title = 'Selected: paused';
-  else if (!records) title = `Selected: not recording on ${host}`;
+  const { recording, sites } = await getSettings();
+  const site = siteFor(host, sites);
+  let text = '';
+  let title = `Selected: ${host || 'this page'} is not on your list`;
+  if (!recording) {
+    text = 'off';
+    title = 'Selected: paused';
+  } else if (site) {
+    text = '•';
+    title = `Selected: saving on ${site.host}`;
+  }
+  await chrome.action.setBadgeText({ tabId, text });
+  await chrome.action.setBadgeBackgroundColor({
+    tabId,
+    color: text === 'off' ? OFF_COLOR : MARK_COLOR,
+  });
   await chrome.action.setTitle({ tabId, title });
 }
 
@@ -75,7 +86,22 @@ function scheduleCleanup() {
   });
 }
 
+/**
+ * Write the site list once from the old settings, then drop the old keys.
+ *
+ * getSettings and the content script read `sites` alone. They see the old
+ * list only after this step has written it.
+ */
+async function migrate() {
+  const stored = await chrome.storage.local.get(null);
+  if (!Array.isArray(stored.sites)) {
+    await chrome.storage.local.set({ sites: migrateSites(stored) });
+  }
+  await chrome.storage.local.remove(OLD_KEYS);
+}
+
 chrome.runtime.onInstalled.addListener(async () => {
+  await migrate();
   const stored = await chrome.storage.local.get(Object.keys(DEFAULTS));
   const missing = {};
   for (const [key, value] of Object.entries(DEFAULTS)) {
@@ -97,21 +123,17 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === CLEANUP_ALARM) runCleanup();
 });
 
+// A new retention value is not cleaned up here. The page sends
+// `selected:cleanup` after it writes the value, and shows the count it gets
+// back. A second cleanup here would race it and take that count.
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local') return;
-  if (
-    changes.recording ||
-    changes.captureSelection ||
-    changes.captureClipboard
-  ) {
-    paintBadge();
-  }
-  if (changes.retentionDays) runCleanup();
+  if (changes.recording) paintBadge();
 });
 
 // Open the manager page, or focus it if it is already open.
 // getContexts finds our own tab without the broad "tabs" permission.
-chrome.action.onClicked.addListener(async () => {
+async function openPage() {
   const url = chrome.runtime.getURL(PAGE_URL);
   const contexts = await chrome.runtime.getContexts({
     contextTypes: ['TAB'],
@@ -124,7 +146,48 @@ chrome.action.onClicked.addListener(async () => {
   } else {
     await chrome.tabs.create({ url });
   }
-});
+}
+
+let siteWrites = Promise.resolve();
+
+/**
+ * Add, change or remove one site. This is the only code that writes `sites`.
+ *
+ * Each change waits for the one before it. A change reads the list and writes
+ * it back. Two changes that both read before either writes would each save
+ * their own copy, and the second copy would drop the first change.
+ */
+function updateSite(change) {
+  const run = siteWrites.then(() => writeSite(change));
+  siteWrites = run.catch(() => {});
+  return run;
+}
+
+/**
+ * Apply one site change to the stored list.
+ *
+ * A host typed as a URL is reduced to its host first. Adding a host that is
+ * already listed changes its boxes.
+ */
+async function writeSite({ host, select, shortcut, remove }) {
+  const [entry] = cleanSites([{ host }]);
+  if (!entry) return { ok: false, reason: 'no host' };
+  const { sites } = await getSettings();
+  const others = sites.filter((site) => site.host !== entry.host);
+  const old = sites.find((site) => site.host === entry.host);
+  const next = remove
+    ? others
+    : cleanSites([
+        ...others,
+        {
+          host: entry.host,
+          select: select ?? old?.select ?? true,
+          shortcut: shortcut ?? old?.shortcut ?? true,
+        },
+      ]);
+  await chrome.storage.local.set({ sites: next });
+  return { ok: true, host: entry.host, sites: next };
+}
 
 async function handleSave(message, sender) {
   // The extension is not enabled in incognito, but check anyway.
@@ -132,11 +195,10 @@ async function handleSave(message, sender) {
 
   const settings = await getSettings();
   if (!settings.recording) return { saved: false, reason: 'paused' };
-  if (!settings.captureSelection) return { saved: false, reason: 'off' };
 
   const url = message.url || sender.tab?.url || '';
-  if (!hostRecords(hostOfUrl(url), settings)) {
-    return { saved: false, reason: 'blocked' };
+  if (!siteFor(hostOfUrl(url), settings.sites)?.select) {
+    return { saved: false, reason: 'not listed' };
   }
 
   const result = await addSelection({
@@ -147,37 +209,158 @@ async function handleSave(message, sender) {
   return { saved: true, ...result };
 }
 
+let offscreenReady = null;
+
 /**
- * Save the clipboard text after the user presses the shortcut.
- * The record has no source page, so it carries no url and no title.
+ * Read the clipboard in the offscreen document.
+ *
+ * The worker has no clipboard of its own. The offscreen document is a hidden
+ * page of this extension, so no website sees the text. Chrome allows one
+ * offscreen document, so the promise stops two presses from creating two.
  */
-async function handleClipboard(message) {
+async function readClipboard() {
+  offscreenReady ??= (async () => {
+    if (await chrome.offscreen.hasDocument()) return;
+    await chrome.offscreen.createDocument({
+      url: OFFSCREEN_URL,
+      reasons: ['CLIPBOARD'],
+      justification: 'Read the clipboard when the user presses the shortcut.',
+    });
+  })().catch((error) => {
+    offscreenReady = null;
+    throw error;
+  });
+  await offscreenReady;
+  const reply = await chrome.runtime.sendMessage({
+    type: 'selected:offscreen-read',
+  });
+  return String(reply?.text || '');
+}
+
+/** Ask the tab's frames for a selection. Only a focused frame answers. */
+async function selectionIn(tabId) {
+  try {
+    const reply = await chrome.tabs.sendMessage(tabId, {
+      type: 'selected:selection',
+    });
+    return reply?.text ? reply : null;
+  } catch {
+    // No frame answered, or the page has no content script.
+    return null;
+  }
+}
+
+// The pending badge reset for each tab that shows a mark.
+const flashTimers = new Map();
+
+/**
+ * Tell the user what a press did.
+ *
+ * The toast needs the content script. A page without one (`chrome://`, the
+ * PDF viewer) gets a mark on the badge for two seconds instead.
+ *
+ * The reset clears the tab's own badge text. The tab then shows the global
+ * text, which paintBadge keeps current. A second press restarts the two
+ * seconds.
+ */
+async function tell(tabId, text, ok) {
+  try {
+    await chrome.tabs.sendMessage(
+      tabId,
+      { type: 'selected:toast', text },
+      { frameId: 0 },
+    );
+  } catch {
+    clearTimeout(flashTimers.get(tabId));
+    await chrome.action.setBadgeText({ tabId, text: ok ? '✓' : '×' });
+    flashTimers.set(
+      tabId,
+      setTimeout(() => {
+        flashTimers.delete(tabId);
+        chrome.action.setBadgeText({ tabId, text: null }).catch(() => {});
+      }, FLASH_MS),
+    );
+  }
+}
+
+/**
+ * The shortcut. Chrome catches the key and passes the tab.
+ *
+ * Pressing the key grants `activeTab`, so `tab.url` is readable here. The
+ * press saves the focused frame's selection. With no selection it saves the
+ * clipboard. Both need the site to be listed with its Shortcut box ticked.
+ *
+ * A selection in an iframe from another host needs that host listed too. The
+ * Select box works the same way, because handleSave checks the frame's URL.
+ */
+async function onShortcut(tab) {
+  if (!tab?.id || tab.incognito) return;
   const settings = await getSettings();
-  if (!settings.recording) return { saved: false, reason: 'paused' };
-  if (!settings.captureClipboard) return { saved: false, reason: 'off' };
-  // The allow-list does not apply here. Selection capture is ambient and the
-  // list narrows it. A shortcut is a request for this text on this page.
-  // The blocklist still applies in block mode: a host named there is one no
-  // text should come from, however it is asked for.
-  if (
-    settings.hostMode === 'block' &&
-    isBlocked(hostOfUrl(message.pageUrl), settings.blockedHosts)
-  ) {
-    return { saved: false, reason: 'blocked' };
+  if (!settings.recording) return tell(tab.id, 'Selected: paused', false);
+
+  const host = hostOfUrl(tab.url || '');
+  const site = siteFor(host, settings.sites);
+  if (!site) {
+    return tell(
+      tab.id,
+      `Selected: ${host || 'this page'} is not on your list`,
+      false,
+    );
+  }
+  if (!site.shortcut) {
+    return tell(tab.id, `Selected: the shortcut is off on ${site.host}`, false);
   }
 
-  const text = String(message.text || '').trim();
-  const keep = shouldSaveClipboard(text, { newestText: await newestText() });
-  if (!keep) return { saved: false, reason: 'duplicate' };
+  const selection = await selectionIn(tab.id);
+  let record;
+  if (selection) {
+    const frameHost = hostOfUrl(selection.url);
+    const frameSite = siteFor(frameHost, settings.sites);
+    if (!frameSite?.shortcut) {
+      return tell(
+        tab.id,
+        `Selected: ${frameHost || 'this frame'} is not on your list`,
+        false,
+      );
+    }
+    record = {
+      text: selection.text,
+      url: selection.url,
+      title: selection.title,
+    };
+  } else {
+    let text = '';
+    try {
+      text = (await readClipboard()).trim();
+    } catch (error) {
+      console.error('Selected: could not read the clipboard', error);
+      return tell(tab.id, 'Selected: could not read the clipboard', false);
+    }
+    if (!text) return tell(tab.id, 'Selected: nothing to save', false);
+    record = { text, url: '', title: '', source: 'clipboard' };
+  }
 
-  const result = await addSelection({
-    text,
-    url: '',
-    title: '',
-    source: 'clipboard',
-  });
-  return { saved: true, ...result };
+  // shouldSaveOnShortcut answers false for all three cases. The two length
+  // checks run first, so its false below means a duplicate.
+  if (record.text.length < MIN_LENGTH) {
+    return tell(tab.id, 'Selected: that text is too short', false);
+  }
+  if (record.text.length > MAX_LENGTH) {
+    return tell(tab.id, 'Selected: that text is too long', false);
+  }
+  if (!shouldSaveOnShortcut(record.text, { newestText: await newestText() })) {
+    return tell(tab.id, 'Selected: already saved', true);
+  }
+  await addSelection(record);
+  return tell(tab.id, 'Selected: saved', true);
 }
+
+chrome.commands.onCommand.addListener((command, tab) => {
+  if (command !== COMMAND) return;
+  onShortcut(tab).catch((error) => {
+    console.error('Selected: the shortcut failed', error);
+  });
+});
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (message?.type === 'selected:save') {
@@ -190,19 +373,9 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     return true; // respond() is called later
   }
 
-  if (message?.type === 'selected:clipboard') {
-    handleClipboard(message)
-      .then(respond)
-      .catch((error) => {
-        console.error('Selected: could not save the clipboard', error);
-        respond({ saved: false, error: String(error) });
-      });
-    return true;
-  }
-
-  // Sent by every content script on load, and again whenever a setting that
-  // decides recording changes. It is the only way the worker learns a tab's
-  // host without the `tabs` permission.
+  // Sent by every content script on load, and again whenever the site list or
+  // the recording flag changes. It is how the worker learns a tab's host
+  // without the `tabs` permission.
   if (message?.type === 'selected:host') {
     const tabId = sender.tab?.id;
     if (tabId !== undefined) {
@@ -214,14 +387,33 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     return false;
   }
 
+  // From the popup and the manager page.
+  if (message?.type === 'selected:site') {
+    updateSite(message)
+      .then(respond)
+      .catch((error) => respond({ ok: false, error: String(error) }));
+    return true;
+  }
+
+  if (message?.type === 'selected:open') {
+    openPage()
+      .then(() => respond({ ok: true }))
+      .catch((error) => respond({ ok: false, error: String(error) }));
+    return true;
+  }
+
   if (message?.type === 'selected:count') {
-    countAll().then((count) => respond({ count }));
+    countAll()
+      .then((count) => respond({ count }))
+      .catch((error) => respond({ count: 0, error: String(error) }));
     return true;
   }
 
   // The page asks for a cleanup after the retention setting changes.
   if (message?.type === 'selected:cleanup') {
-    runCleanup().then((deleted) => respond({ deleted }));
+    runCleanup()
+      .then((deleted) => respond({ deleted }))
+      .catch((error) => respond({ deleted: 0, error: String(error) }));
     return true;
   }
 

@@ -11,6 +11,7 @@ const {
   queryAll,
   deleteIds,
   deleteOlderThan,
+  countOlderThan,
   clearAll,
   countAll,
   listHosts,
@@ -210,6 +211,14 @@ test('retention keeps everything when the cutoff is older than all records', asy
   await seed();
   assert.equal(await deleteOlderThan(T0 - DAY), 0);
   assert.equal(await countAll(), 3);
+});
+
+test('countOlderThan counts what deleteOlderThan would drop', async () => {
+  await seed();
+  assert.equal(await countOlderThan(T0 + DAY), 1);
+  assert.equal(await countOlderThan(T0 - DAY), 0);
+  assert.equal(await countAll(), 3);
+  assert.equal(await countOlderThan(T0 + DAY), await deleteOlderThan(T0 + DAY));
 });
 
 test('queryAll returns every match, not one page', async () => {
