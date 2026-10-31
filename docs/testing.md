@@ -48,6 +48,9 @@ the reload.
     seconds and the badge matches the recording state.
 17. Lower the retention window so records go. The toast count matches the
     number the page asked about.
+18. Open a listed site. Reload the extension, but not the tab. Select text in
+    the tab. The page console shows no error. Reload the tab. Selecting saves
+    again.
 
 ## Reading the storage
 

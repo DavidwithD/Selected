@@ -39,6 +39,7 @@ function siteHere() {
  */
 function settle() {
   site = siteHere();
+  if (!connected()) return;
   if (window.top !== window) return;
   chrome.runtime
     .sendMessage({ type: 'selected:host', host: location.hostname })
@@ -75,7 +76,7 @@ function currentSelection() {
 }
 
 function capture() {
-  if (!recording || !site?.select) return;
+  if (!recording || !site?.select || !connected()) return;
   const text = currentSelection().trim();
   if (text.length < MIN_LENGTH) return;
   if (text.length > MAX_LENGTH) return;
@@ -101,20 +102,36 @@ function capture() {
   );
 }
 
+/**
+ * Whether this copy of the script still belongs to a running extension.
+ *
+ * A reload or an update of the extension cuts off the copies already running in
+ * open tabs. `chrome.runtime` then has no id, and its calls throw. A reload of
+ * the tab loads a new copy.
+ */
+function connected() {
+  return Boolean(chrome.runtime?.id);
+}
+
+function onKeyUp(event) {
+  if (event.shiftKey || event.key?.startsWith('Arrow')) schedule();
+}
+
 function schedule() {
   clearTimeout(timer);
+  // A cut-off copy stops listening. It can never save again.
+  if (!connected()) {
+    document.removeEventListener('mouseup', schedule, true);
+    document.removeEventListener('dblclick', schedule, true);
+    document.removeEventListener('keyup', onKeyUp, true);
+    return;
+  }
   timer = setTimeout(capture, DEBOUNCE_MS);
 }
 
 document.addEventListener('mouseup', schedule, true);
 document.addEventListener('dblclick', schedule, true);
-document.addEventListener(
-  'keyup',
-  (event) => {
-    if (event.shiftKey || event.key?.startsWith('Arrow')) schedule();
-  },
-  true,
-);
+document.addEventListener('keyup', onKeyUp, true);
 
 /**
  * Whether this frame holds the focus itself.
