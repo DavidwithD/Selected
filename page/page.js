@@ -1,4 +1,5 @@
-// Manager page: browse, filter, copy, download and delete saved selections.
+// Manager page: browse, filter, edit, copy, download and delete saved
+// selections.
 
 import {
   query,
@@ -9,6 +10,7 @@ import {
   countAll,
   countOlderThan,
   listHosts,
+  updateText,
 } from '../lib/db.js';
 import { FIELD_LABELS, FORMATS, formatTime, stamp } from '../lib/format.js';
 import { DAY_MS, getSettings, setSettings } from '../lib/settings.js';
@@ -150,8 +152,11 @@ function buildRow(record) {
   const text = document.createElement('p');
   text.className = 'text';
   text.append(highlighted(record.text, ui.q.value));
-  text.title = 'Click to expand';
-  text.addEventListener('click', () => row.classList.toggle('open'));
+  text.title = 'Click to expand. Double-click to edit.';
+  text.addEventListener('click', () => {
+    if (!row.classList.contains('editing')) row.classList.toggle('open');
+  });
+  text.addEventListener('dblclick', () => startEdit(row, text, record));
 
   const meta = document.createElement('div');
   meta.className = 'meta';
@@ -165,22 +170,84 @@ function buildRow(record) {
 
   const actions = document.createElement('div');
   actions.className = 'actions';
+  const edit = document.createElement('button');
+  edit.textContent = 'Edit';
+  edit.addEventListener('click', () => startEdit(row, text, record));
   const copy = document.createElement('button');
   copy.textContent = 'Copy';
-  copy.addEventListener('click', () => copyText(record.text, 'Copied'));
+  copy.addEventListener('click', () => {
+    const editing = row.classList.contains('editing');
+    copyText(editing ? text.textContent.trim() : record.text, 'Copied');
+  });
   const remove = document.createElement('button');
   remove.className = 'danger';
   remove.textContent = 'Delete';
   remove.addEventListener('click', async () => {
+    // Drop the edit first, so it is not saved onto a deleted record.
+    await row.endEdit?.(false);
     await deleteIds([record.id]);
     state.picked.delete(record.id);
     toast('Deleted');
     await refresh();
   });
-  actions.append(copy, remove);
+  actions.append(edit, copy, remove);
+  // A click on a button would blur the text box and save the edit early.
+  // Keep the focus in the box. The buttons then act on the edit.
+  actions.addEventListener('mousedown', (event) => {
+    if (row.classList.contains('editing')) event.preventDefault();
+  });
 
   row.append(check, body, actions);
   return row;
+}
+
+/**
+ * Turn the text of one row into a text box.
+ *
+ * Cmd+Enter, Ctrl+Enter or leaving the box saves. Escape puts the old text
+ * back. Search marks are dropped while editing, so the box holds plain text.
+ */
+function startEdit(row, text, record) {
+  if (row.classList.contains('editing')) return;
+  row.classList.add('editing');
+  text.contentEditable = 'plaintext-only';
+  text.textContent = record.text;
+  text.focus();
+
+  let finished = false;
+  const finish = async (save) => {
+    if (finished) return;
+    finished = true;
+    text.removeEventListener('keydown', onKey);
+    text.removeEventListener('blur', onBlur);
+    text.contentEditable = 'false';
+    row.classList.remove('editing');
+    const next = text.textContent.trim();
+    if (save && !next) toast('Text cannot be empty');
+    if (save && next && next !== record.text) {
+      try {
+        await updateText(record.id, next);
+        toast('Saved');
+      } catch (error) {
+        console.error('Selected: save failed', error);
+        toast('Could not save');
+      }
+    }
+    await refresh();
+  };
+  row.endEdit = finish;
+  const onKey = (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      finish(false);
+    } else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      finish(true);
+    }
+  };
+  const onBlur = () => finish(true);
+  text.addEventListener('keydown', onKey);
+  text.addEventListener('blur', onBlur);
 }
 
 function paintSelection() {
@@ -543,7 +610,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === '/' && document.activeElement !== ui.q) {
+  const target = event.target;
+  const typing =
+    target.isContentEditable || ['INPUT', 'TEXTAREA'].includes(target.tagName);
+  if (event.key === '/' && !typing) {
     event.preventDefault();
     ui.q.focus();
   }
@@ -553,7 +623,8 @@ document.addEventListener('keydown', (event) => {
 // when the tab or the window gets focus. Filters, page and ticked rows stay.
 let reloading = false;
 async function reloadOnFocus() {
-  if (document.hidden || reloading) return;
+  // A repaint would throw away a row being edited.
+  if (document.hidden || reloading || ui.list.querySelector('.editing')) return;
   reloading = true;
   try {
     await refreshHosts();

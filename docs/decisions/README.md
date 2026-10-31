@@ -10,6 +10,7 @@ these say why it is that and not something else.
 | [0003](0003-choosing-what-an-export-carries.md)     | The export field choice, and where its control sits     |
 | [0004](0004-recording-only-on-listed-sites.md)      | The allow-list, the per-tab badge, and host parsing     |
 | [0005](0005-one-site-list-and-a-chrome-shortcut.md) | One site list, the Chrome shortcut, the popup           |
+| [0006](0006-edit-text-on-the-page.md)               | Editing the text of a record on the manager page        |
 
 A new record gets the next number. Numbers are never reused, and a reversed
 decision gets a new record rather than an edit to the old one.

@@ -13,8 +13,8 @@ A selection travels through three processes.
    text to the service worker.
 2. `background.js` decides whether to keep it, and writes it. It is the only
    writer.
-3. `page/` reads the database directly and shows it. It deletes, and never
-   writes a record.
+3. `page/` reads the database directly and shows it. It edits the text of a
+   record and deletes records. It never adds a record.
 
 The content script also keeps a local copy of the site rule. That copy only
 saves a message per selection on a site that does not save. The service worker
@@ -37,8 +37,8 @@ The shortcut takes another path.
 | ----------------------------- | ------------------------------------------------------- |
 | `manifest.json`               | MV3 manifest. Content script on `<all_urls>`.           |
 | `content.js`                  | Reads the selection, debounces, sends it.               |
-| `background.js`               | Writes records and `sites`. Shortcut, badge, cleanup.   |
-| `lib/db.js`                   | IndexedDB open, add, query, delete, retention.          |
+| `background.js`               | Adds records, writes `sites`. Shortcut, badge, cleanup. |
+| `lib/db.js`                   | IndexedDB open, add, query, edit, delete, retention.    |
 | `lib/settings.js`             | Defaults, the site list rules, host parsing, migration. |
 | `lib/clipboard.js`            | The shortcut dedupe rule.                               |
 | `lib/shortcut.js`             | Reads the current key for the popup and page.           |
@@ -79,7 +79,8 @@ These are assumptions the code is built on. Correct any that stop being true.
 1. Plain MV3. No bundler, no framework, no TypeScript.
 2. Selections grow without limit and need indexed queries, so they are in
    IndexedDB rather than `chrome.storage`.
-3. The service worker is the only writer.
+3. The service worker is the only code that adds a record. The page edits the
+   text and deletes.
 4. Capture triggers on mouse-up, double-click and shift-select. It does not
    trigger on `selectionchange`, so a slow drag does not save partial text.
 5. Widening a selection updates the previous record instead of adding a second
