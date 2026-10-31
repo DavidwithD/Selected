@@ -2,7 +2,7 @@
 
 A Chrome extension. It saves the text you select on the sites you choose. A
 shortcut saves a selection or the clipboard. One page lets you browse, filter,
-copy, export and delete what it saved.
+edit, copy, export and delete what it saved.
 
 Everything stays on this machine. Nothing is uploaded.
 
@@ -78,6 +78,13 @@ Command+Shift+Y makes a Stickies note, and Chrome never sees it.
 
 Why it works this way:
 [0005](docs/decisions/0005-one-site-list-and-a-chrome-shortcut.md).
+
+## Edit
+
+Click **Edit** on a row, or double-click its text. Cmd+Enter, Ctrl+Enter or a
+click outside saves. Escape cancels.
+
+Why it works this way: [0006](docs/decisions/0006-edit-text-on-the-page.md).
 
 ## Download
 

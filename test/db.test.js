@@ -16,6 +16,7 @@ const {
   countAll,
   listHosts,
   newestText,
+  updateText,
 } = await import('../lib/db.js');
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -225,4 +226,21 @@ test('queryAll returns every match, not one page', async () => {
   await seed();
   const rows = await queryAll({ text: 'quick' });
   assert.equal(rows.length, 2);
+});
+
+/** Ids by text, from the seeded records. */
+async function idsByText() {
+  const rows = await queryAll({});
+  return Object.fromEntries(rows.map((r) => [r.text, r.id]));
+}
+
+test('updateText changes only the text', async () => {
+  await seed();
+  const id = await idsByText();
+  const before = (await queryAll({})).find((r) => r.id === id['lazy dog']);
+  const after = await updateText(id['lazy dog'], 'sleepy dog');
+  assert.deepEqual(after, { ...before, text: 'sleepy dog' });
+  const { rows } = await query({ text: 'sleepy' });
+  assert.deepEqual(rows, [after]);
+  assert.equal(await updateText(999999, 'nothing'), null);
 });

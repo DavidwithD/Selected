@@ -1,4 +1,4 @@
-// Service worker. Single writer to the database.
+// Service worker. The only code that adds records to the database.
 // Owns the shortcut, the badge, the site list writes and the retention cleanup.
 
 import {

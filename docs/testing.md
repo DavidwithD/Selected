@@ -6,8 +6,8 @@
 run outside a browser, so nothing opens.
 
 Covered: add, search, host and date filters, paging, the supersede rule, delete,
-clear, retention, the site list rules, migration, host parsing, and the three
-export builders.
+clear, retention, the site list rules, migration, host parsing, the three
+export builders, and text edits.
 
 ## What the suite cannot reach
 
@@ -48,6 +48,14 @@ the reload.
     seconds and the badge matches the recording state.
 17. Lower the retention window so records go. The toast count matches the
     number the page asked about.
+18. Open a listed site. Reload the extension, but not the tab. Select text in
+    the tab. The page console shows no error. Reload the tab. Selecting saves
+    again.
+19. Click **Edit** on a row, change the text, press Cmd+Enter. Reload the page.
+    The new text stays, and a search finds it.
+20. Edit a row, then press Escape. Nothing changes. Edit a row to empty text.
+    A toast refuses it, and the old text stays.
+21. Edit a row's text, then download JSON. The file has the new text.
 
 ## Reading the storage
 

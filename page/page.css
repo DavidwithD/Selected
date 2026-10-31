@@ -188,8 +188,17 @@ main {
   cursor: pointer;
 }
 
-.row.open .text {
+.row.open .text,
+.row.editing .text {
   -webkit-line-clamp: unset;
+}
+
+/* Edit mode: the text is a box. */
+.row.editing .text {
+  cursor: text;
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 2px;
 }
 
 .text mark {
